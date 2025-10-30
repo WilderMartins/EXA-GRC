@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EXA GRC - Plataforma de Gestão de Riscos</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background-color: #1a1a1a;
+      --surface-color: #2c2c2c;
+      --primary-color: #4a90e2;
+      --secondary-color: #50e3c2;
+      --danger-color: #e24a4a;
+      --text-color: #e0e0e0;
+      --text-secondary-color: #a0a0a0;
+      --border-color: #444;
+      --risk-low: #28a745;
+      --risk-medium: #ffc107;
+      --risk-high: #fd7e14;
+      --risk-critical: #dc3545;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--background-color);
+      color: var(--text-color);
+    }
+    /* Custom scrollbar for better dark-mode aesthetics */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--background-color);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #555;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #777;
+    }
+    @keyframes highlight-fade {
+      0% { background-color: rgba(74, 144, 226, 0.3); }
+      100% { background-color: transparent; }
+    }
+    .highlight-row {
+      animation: highlight-fade 2s ease-out;
+    }
+  </style>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            background: 'var(--background-color)',
+            surface: 'var(--surface-color)',
+            primary: 'var(--primary-color)',
+            secondary: 'var(--secondary-color)',
+            danger: 'var(--danger-color)',
+            'text-primary': 'var(--text-color)',
+            'text-secondary': 'var(--text-secondary-color)',
+            'border-color': 'var(--border-color)',
+            risk: {
+              low: 'var(--risk-low)',
+              medium: 'var(--risk-medium)',
+              high: 'var(--risk-high)',
+              critical: 'var(--risk-critical)',
+            }
+          }
+        }
+      }
+    }
+  </script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.418.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.27.0"
+  }
+}
+</script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

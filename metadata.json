@@ -1,0 +1,5 @@
+{
+  "name": "EXA GRC - Risk Management Dashboard",
+  "description": "A comprehensive Governance, Risk, and Compliance (GRC) application to track and manage information security risks, inspired by market best practices and compliance frameworks like NIST CSF and CIS Controls.",
+  "requestFramePermissions": []
+}
