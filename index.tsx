@@ -1,3069 +1,852 @@
-import React, { useState, useMemo, createContext, useContext, useRef, useEffect } from 'react';
+// @ts-nocheck
+import React, { useState, useEffect, createContext, useContext, useRef, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Shield, LayoutDashboard, BarChart3, Users, Settings, Briefcase, GanttChartSquare, BrainCircuit, Zap, Plus, Search, DatabaseZap, AlertTriangle, ChevronDown, Upload, Download, Edit, Trash2, UserPlus, Bell, RefreshCw, FileDown, Bot, Clock, Users2, UserCheck, Mail, ExternalLink, LogOut, KeyRound, CheckCircle, XCircle } from 'lucide-react';
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
+import { initializeApp } from 'firebase/app';
+import {
+  getFirestore,
+  doc,
+  collection,
+  getDocs,
+  setDoc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  onSnapshot,
+  writeBatch,
+} from 'firebase/firestore';
+import {
+  ChevronDown, X, Sidebar, Home, Shield, Database, AlertTriangle, ChevronsUpDown, Settings, Users, LogOut, PlusCircle, Edit, Trash2, Eye, Sun, Moon, CheckCircle, AlertCircle, Info
+} from 'lucide-react';
 
-// --- AI Client Initialization ---
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-
-// --- DUMMY DATA & TYPES ---
-
-// Enums
-enum RiskStatus { 
-    Open = 'Aberto', 
-    InProgress = 'Em Andamento', 
-    Mitigated = 'Mitigado', 
-    Accepted = 'Aceito',
-    Canceled = 'Cancelado'
-}
-enum RiskType {
-    Operational = 'Operacional',
-    Compliance = 'Conformidade',
-    Financial = 'Financeiro',
-    Strategic = 'Estratégico',
-    Obsolescence = 'Obsolescência',
-    Security = 'Segurança',
-}
-enum FrameworkName { NIST = 'NIST CSF 2.0', CIS = 'CIS Controls v8', LGPD = 'LGPD' }
-enum ControlStatus { NotImplemented = 'Não Implementado', PartiallyImplemented = 'Parcialmente Implementado', FullyImplemented = 'Totalmente Implementado', InProgress = 'Em Progresso' }
-enum DataControlStatus { Active = 'Ativo', Inactive = 'Inativo', InReview = 'Em Revisão' }
-enum AssetCriticality { Low = 'Baixa', Medium = 'Média', High = 'Alta', Critical = 'Crítica' }
-enum AssetType {
-    Server = 'Servidor',
-    WebApp = 'Aplicação Web',
-    Database = 'Banco de Dados',
-    API = 'API',
-    NetworkAsset = 'Ativo de Rede',
-    IPAddress = 'Endereço IP',
-    Domain = 'Domínio',
-    MobileApp = 'Aplicativo Mobile',
-    Other = 'Outro'
-}
-enum ObsolescenceStatus { Supported = 'Suportado', NearingEOL = 'Próximo do Fim', Obsolete = 'Obsoleto' }
-enum ObsolescenceAssetType { Software = 'Software', Hardware = 'Hardware', OS = 'Sistema Operacional', Library = 'Biblioteca' }
-enum AlertTriggerEvent {
-    RISK_CRITICAL = "Risco se torna Crítico",
-    RISK_HIGH = "Risco se torna Alto",
-    RISK_DUE_DATE_LATE = "Prazo do Risco está Atrasado",
-    OBSOLESCENCE_NEARING_EOL = "Item de Obsolescência Próximo do Fim",
-    OBSOLESCENCE_OBSOLETE = "Item de Obsolescência se torna Obsoleto",
-}
-
-// Interfaces
-interface Profile { id: number; name: string; description: string; permissions: string[]; }
-interface Group { id: number; name: string; description: string; memberIds: number[]; }
-interface User { id: number; name: string; email: string; profileId: number; avatarUrl?: string; }
+// --- TYPES AND INTERFACES ---
+// Keep IDs as strings for Firestore compatibility
+interface User { id: string; name: string; email: string; role: 'Admin' | 'Analyst'; passwordHash: string; }
+interface Asset { id: string; name: string; type: string; owner: string; criticality: 'Low' | 'Medium' | 'High' | 'Critical'; }
+interface Threat { id: string; name: string; description: string; type: 'Malicious' | 'Accidental' | 'Environmental'; }
+interface Control { id: string; name: string; description: string; family: string; framework: 'NIST CSF' | 'CIS Controls'; }
 interface Risk {
-  id: number;
-  creationDate: string;
+  id: string;
   title: string;
-  description: string;
-  probability: number;
-  impact: number;
-  status: RiskStatus;
-  owner: string; 
-  dueDate: string; 
-  type: RiskType; 
-  sla: number;
-  planResponsible: string;
-  technicalResponsible: string;
-  actionPlan: string;
-  completionDate?: string;
+  assetId: string;
+  threatId: string;
+  controlId: string;
+  status: 'Open' | 'In Progress' | 'Closed' | 'Accepted';
+  likelihood: number; // 1-5
+  impact: number;     // 1-5
+  owner: string;
+  createdAt: string;
 }
-interface Control {
-    id: string;
-    framework: FrameworkName;
-    family: string;
-    name:string;
-    description: string;
-    status?: ControlStatus;
-    processScore?: number;
-    practiceScore?: number;
-}
-interface DataControl {
-    id: number;
-    name: string;
-    description: string;
-    category: string;
-    relatedRegulation: string;
-    status: DataControlStatus;
-    criticality: AssetCriticality;
-    owner: string;
-}
-interface Asset {
-    id: number;
-    name: string;
-    type: AssetType;
-    criticality: AssetCriticality;
-    owner: string;
-}
-interface ObsolescenceItem {
-    id: number;
-    assetName: string;
-    assetType: ObsolescenceAssetType;
-    vendor: string;
-    version: string;
-    endOfLifeDate: string;
-    endOfSupportDate: string;
-    impactDescription: string;
-    recommendedAction: string;
-    owner: string;
-}
-interface AlertRule {
-  id: number;
-  name: string;
-  isActive: boolean;
-  triggerEvent: AlertTriggerEvent;
-  notifications: {
-    inApp: boolean;
-    email: boolean;
-  };
-  recipients: {
-    userIds: number[];
-    groupIds: number[];
-  };
-}
+interface FirebaseConfig { apiKey: string; authDomain: string; projectId: string; storageBucket: string; messagingSenderId: string; appId: string; }
 
-
-// Mock Data
-const initialProfiles: Profile[] = [
-    { id: 1, name: 'Admin', description: 'Acesso total ao sistema.', permissions: ['*:*'] },
-    { id: 2, name: 'Risk Analyst', description: 'Pode visualizar e editar riscos e ativos.', permissions: ['risk:read', 'risk:edit', 'asset:read'] },
-    { id: 3, name: 'Manager', description: 'Acesso de visualização a dashboards e relatórios.', permissions: ['dashboard:read', 'risk:read'] },
-    { id: 4, name: 'Guest', description: 'Acesso somente leitura limitado.', permissions: ['dashboard:read'] },
-];
-
-const initialUsers: User[] = [
-    { id: 1, name: 'Admin User', email: 'admin@exa.com.br', profileId: 1 },
-    { id: 2, name: 'Analyst User', email: 'analyst@exa.com.br', profileId: 2 },
-    { id: 3, name: 'Manager User', email: 'manager@exa.com.br', profileId: 3 },
-    { id: 4, name: 'Guest User', email: 'guest@exa.com.br', profileId: 4 },
-];
-
-const initialGroups: Group[] = [
-    { id: 1, name: 'Equipe de Segurança da Informação', description: 'Responsável pela gestão de riscos de SI.', memberIds: [1, 2] },
-    { id: 2, name: 'Gestores de TI', description: 'Responsáveis pela aprovação de mudanças e orçamentos.', memberIds: [3] },
-];
-
-const initialAlertRules: AlertRule[] = [
-    {
-        id: 1,
-        name: "Alerta de Risco Crítico para Equipe de SI",
-        isActive: true,
-        triggerEvent: AlertTriggerEvent.RISK_CRITICAL,
-        notifications: { inApp: true, email: true },
-        recipients: { userIds: [], groupIds: [1] } // Group 1 is 'Equipe de Segurança da Informação'
-    },
-    {
-        id: 2,
-        name: "Notificar Gestores de TI sobre Obsolescência",
-        isActive: false,
-        triggerEvent: AlertTriggerEvent.OBSOLESCENCE_NEARING_EOL,
-        notifications: { inApp: true, email: false },
-        recipients: { userIds: [], groupIds: [2] } // Group 2 is 'Gestores de TI'
-    }
-];
-
-const initialRisks: Risk[] = [
-    { id: 1, creationDate: '2024-05-10T10:00:00Z', title: 'Acesso não autorizado ao banco de dados', description: 'Um atacante externo pode explorar uma vulnerabilidade SQL Injection para ganhar acesso.', probability: 4, impact: 5, status: RiskStatus.Open, owner: 'Equipe de Segurança', dueDate: '2024-08-30', type: RiskType.Security, sla: 30, planResponsible: 'João Silva', technicalResponsible: 'Maria Souza', actionPlan: 'Realizar pentest na aplicação e corrigir vulnerabilidades encontradas.', completionDate: '', },
-    { id: 2, creationDate: '2024-06-20T14:30:00Z', title: 'Vazamento de dados por phishing', description: 'Colaboradores podem ser enganados por emails de phishing e divulgar credenciais.', probability: 3, impact: 4, status: RiskStatus.InProgress, owner: 'Suporte de TI', dueDate: '2024-07-15', type: RiskType.Security, sla: 60, planResponsible: 'Ana Costa', technicalResponsible: 'Carlos Lima', actionPlan: 'Implementar campanha de conscientização e treinamento anti-phishing.', completionDate: '', },
-    { id: 3, creationDate: '2023-11-01T09:00:00Z', title: 'Indisponibilidade do e-commerce', description: 'Uma falha de hardware no servidor principal pode causar a interrupção das vendas online.', probability: 2, impact: 5, status: RiskStatus.Mitigated, owner: 'Equipe de Infra', dueDate: '2024-01-15', type: RiskType.Operational, sla: 15, planResponsible: 'Pedro Martins', technicalResponsible: 'Pedro Martins', actionPlan: 'Configurar cluster de alta disponibilidade para os servidores web.', completionDate: '2024-01-10', },
-];
-
-const initialDataControls: DataControl[] = [
-    { id: 1, name: 'Política de Retenção de Dados', description: 'Define por quanto tempo os dados pessoais são mantidos.', category: 'Políticas de Dados', relatedRegulation: 'LGPD Art. 15', status: DataControlStatus.Active, criticality: AssetCriticality.High, owner: 'DPO' },
-    { id: 2, name: 'Processo de Requisição de Titular', description: 'Procedimento para atender às solicitações de direitos dos titulares de dados.', category: 'Direitos dos Titulares', relatedRegulation: 'LGPD Art. 18', status: DataControlStatus.Active, criticality: AssetCriticality.Medium, owner: 'Equipe de Privacidade' },
-];
-
-const initialAssets: Asset[] = [
-    { id: 1, name: 'Servidor de Autenticação (auth.exa.com.br)', type: AssetType.Server, criticality: AssetCriticality.Critical, owner: 'Equipe de Infra' },
-    { id: 2, name: 'API de Pagamentos', type: AssetType.API, criticality: AssetCriticality.Critical, owner: 'Equipe de Dev' },
-    { id: 3, name: 'DB de Clientes (prd-customer-db-01)', type: AssetType.Database, criticality: AssetCriticality.High, owner: 'Equipe de DBA' },
-    { id: 4, name: 'Firewall de Borda (FW-CORP-01)', type: AssetType.NetworkAsset, criticality: AssetCriticality.High, owner: 'Equipe de Redes' },
-];
-
-const initialObsolescenceItems: ObsolescenceItem[] = [
-    { id: 1, assetName: 'Windows Server 2012 R2', assetType: ObsolescenceAssetType.OS, vendor: 'Microsoft', version: '6.3.9600', endOfLifeDate: '2018-10-09', endOfSupportDate: '2023-10-10', impactDescription: 'Sem atualizações de segurança, alto risco de exploração por vulnerabilidades conhecidas. Incompatibilidade com softwares modernos.', recommendedAction: 'Migrar para Windows Server 2022.', owner: 'Equipe de Infra' },
-    { id: 2, assetName: 'Python', assetType: ObsolescenceAssetType.Software, vendor: 'Python Software Foundation', version: '2.7', endOfLifeDate: '2020-01-01', endOfSupportDate: '2020-01-01', impactDescription: 'A biblioteca não recebe mais atualizações, tornando-a vulnerável. A maioria das novas bibliotecas não é compatível.', recommendedAction: 'Refatorar código para Python 3.9+.', owner: 'Equipe de Dev' },
-    { id: 3, assetName: 'Cisco ASA 5510', assetType: ObsolescenceAssetType.Hardware, vendor: 'Cisco', version: 'N/A', endOfLifeDate: '2013-09-16', endOfSupportDate: '2018-09-17', impactDescription: 'Hardware antigo com baixo desempenho e sem suporte do fabricante para falhas ou novas ameaças.', recommendedAction: 'Substituir por firewall de nova geração.', owner: 'Equipe de Redes' },
-    { id: 4, assetName: 'AngularJS', assetType: ObsolescenceAssetType.Library, vendor: 'Google', version: '1.x', endOfLifeDate: '2021-12-31', endOfSupportDate: '2021-12-31', impactDescription: 'Framework frontend sem suporte, vulnerável a XSS e outros ataques web.', recommendedAction: 'Migrar aplicação para versão mais recente do Angular ou outro framework.', owner: 'Equipe Frontend' },
-];
-
-// --- COMPREHENSIVE CONTROLS DATABASE ---
-const initialControls: Control[] = [
-    // LGPD Controls
-    { id: 'LGPD-Art.6-VII', framework: FrameworkName.LGPD, family: 'Princípios', name: 'Segurança', description: 'Utilizar medidas técnicas e administrativas aptas a proteger os dados pessoais de acessos não autorizados.', status: ControlStatus.FullyImplemented },
-    { id: 'LGPD-Art.46', framework: FrameworkName.LGPD, family: 'Segurança', name: 'Medidas de Segurança', description: 'Adotar medidas de segurança, técnicas e administrativas para proteger os dados pessoais.', status: ControlStatus.PartiallyImplemented },
-    // NIST CSF 2.0 Controls
-    ...['GV.OC-01: A missão organizacional é compreendida e informa o gerenciamento de riscos.', 'GV.OC-02: Partes interessadas internas e externas são compreendidas.','GV.OC-03: Requisitos legais e regulatórios são compreendidos.','GV.OC-04: Objetivos críticos que partes externas dependem são compreendidos.','GV.OC-05: Resultados e serviços dos quais a organização depende são compreendidos.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Governar', name: 'Contexto Organizacional', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented, processScore: 3, practiceScore: 2 })),
-    ...['GV.RM-01: Objetivos de gerenciamento de risco são estabelecidos.','GV.RM-02: Apetite e tolerância a risco são estabelecidos.','GV.RM-03: Atividades de risco de cibersegurança são incluídas no ERM.','GV.RM-04: Direção estratégica para respostas a risco é estabelecida.','GV.RM-05: Linhas de comunicação para riscos são estabelecidas.','GV.RM-06: Método padronizado para cálculo de risco é estabelecido.','GV.RM-07: Oportunidades estratégicas (riscos positivos) são caracterizadas.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Governar', name: 'Estratégia de Gerenciamento de Risco', description: c.split(':')[1].trim(), status: ControlStatus.PartiallyImplemented, processScore: 4, practiceScore: 3 })),
-    ...['GV.RR-01: Liderança organizacional é responsável pelo risco.','GV.RR-02: Papéis e responsabilidades são estabelecidos.','GV.RR-03: Recursos adequados são alocados.','GV.RR-04: Cibersegurança é incluída nas práticas de RH.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Governar', name: 'Papéis, Responsabilidades e Autoridades', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
-    ...['GV.PO-01: Política de gerenciamento de risco é estabelecida.','GV.PO-02: Política de gerenciamento de risco é revisada e atualizada.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Governar', name: 'Política', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
-    ...['GV.OV-01: Resultados da estratégia de risco são revisados.','GV.OV-02: A estratégia de risco é revisada e ajustada.','GV.OV-03: Desempenho do gerenciamento de risco é avaliado.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Governar', name: 'Supervisão', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
-    ...['GV.SC-01: Programa de C-SCRM é estabelecido.','GV.SC-02: Papéis e responsabilidades para C-SCRM são estabelecidos.','GV.SC-03: C-SCRM é integrado ao gerenciamento de risco.','GV.SC-04: Fornecedores são conhecidos e priorizados por criticidade.','GV.SC-05: Requisitos de C-SCRM são estabelecidos em contratos.','GV.SC-06: Due diligence é realizada antes de novas relações.','GV.SC-07: Riscos de fornecedores são gerenciados.','GV.SC-08: Fornecedores são incluídos no plano de resposta a incidentes.','GV.SC-09: Práticas de segurança da cadeia de suprimentos são integradas.','GV.SC-10: Planos de C-SCRM incluem atividades pós-parceria.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Governar', name: 'Gerenciamento de Risco da Cadeia de Suprimentos', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
-    ...['ID.AM-01: Inventários de hardware são mantidos.','ID.AM-02: Inventários de software, serviços e sistemas são mantidos.','ID.AM-03: Fluxos de dados de rede são mantidos.','ID.AM-04: Inventários de serviços de fornecedores são mantidos.','ID.AM-05: Ativos são priorizados.','ID.AM-07: Inventários de dados e metadados são mantidos.','ID.AM-08: Ciclo de vida de ativos é gerenciado.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Identificar', name: 'Gerenciamento de Ativos', description: c.split(':')[1].trim(), status: ControlStatus.InProgress, processScore: 2, practiceScore: 3 })),
-    ...['ID.RA-01: Vulnerabilidades são identificadas e registradas.','ID.RA-02: Inteligência de ameaças é recebida.','ID.RA-03: Ameaças internas e externas são identificadas.','ID.RA-04: Impactos e probabilidades de ameaças são identificados.','ID.RA-05: Riscos são analisados para priorização.','ID.RA-06: Respostas a riscos são escolhidas e comunicadas.','ID.RA-07: Mudanças e exceções são gerenciadas.','ID.RA-08: Processos para divulgação de vulnerabilidades são estabelecidos.','ID.RA-09: Autenticidade e integridade de hardware/software são avaliadas.','ID.RA-10: Fornecedores críticos são avaliados.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Identificar', name: 'Avaliação de Risco', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
-    ...['ID.IM-01: Melhorias são identificadas a partir de avaliações.','ID.IM-02: Melhorias são identificadas a partir de testes e exercícios.','ID.IM-03: Melhorias são identificadas a partir da execução de processos.','ID.IM-04: Planos de resposta a incidentes são estabelecidos e melhorados.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Identificar', name: 'Melhoria', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
-    ...['PR.AA-01: Identidades e credenciais são gerenciadas.','PR.AA-02: Identidades são verificadas.','PR.AA-03: Usuários, serviços e hardware são autenticados.','PR.AA-04: Assertivas de identidade são protegidas.','PR.AA-05: Permissões de acesso são gerenciadas.','PR.AA-06: Acesso físico é gerenciado.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Proteger', name: 'Controle de Acesso', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
-    ...['PR.AT-01: Pessoal recebe treinamento de conscientização.','PR.AT-02: Indivíduos em papéis especializados recebem treinamento.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Proteger', name: 'Conscientização e Treinamento', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
-    ...['PR.DS-01: Confidencialidade, integridade e disponibilidade de dados em repouso são protegidas.','PR.DS-02: Confidencialidade, integridade e disponibilidade de dados em trânsito são protegidas.','PR.DS-10: Confidencialidade, integridade e disponibilidade de dados em uso são protegidas.','PR.DS-11: Backups de dados são criados e protegidos.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Proteger', name: 'Segurança de Dados', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
-    ...['PR.PS-01: Práticas de gerenciamento de configuração são estabelecidas.','PR.PS-02: Software é mantido e removido com base no risco.','PR.PS-03: Hardware é mantido e removido com base no risco.','PR.PS-04: Registros de log são gerados.','PR.PS-05: Instalação de software não autorizado é prevenida.','PR.PS-06: Práticas de desenvolvimento seguro são integradas.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Proteger', name: 'Segurança da Plataforma', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
-    ...['PR.IR-01: Redes e ambientes são protegidos de acesso lógico não autorizado.','PR.IR-02: Ativos de tecnologia são protegidos de ameaças ambientais.','PR.IR-03: Mecanismos para resiliência são implementados.','PR.IR-04: Capacidade de recursos adequada para garantir disponibilidade é mantida.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Proteger', name: 'Resiliência da Infraestrutura', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
-    ...['DE.CM-01: Redes são monitoradas para eventos adversos.','DE.CM-02: Ambiente físico é monitorado.','DE.CM-03: Atividade de pessoal e uso de tecnologia são monitorados.','DE.CM-06: Atividades de provedores de serviço externos são monitoradas.','DE.CM-09: Hardware, software e seus dados são monitorados.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Detectar', name: 'Monitoramento Contínuo', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
-    ...['DE.AE-02: Eventos adversos são analisados.','DE.AE-03: Informações de múltiplas fontes são correlacionadas.','DE.AE-04: Impacto e escopo de eventos adversos são compreendidos.','DE.AE-06: Informações sobre eventos adversos são fornecidas à equipe autorizada.','DE.AE-07: Inteligência de ameaças é integrada à análise.','DE.AE-08: Incidentes são declarados quando critérios definidos são atendidos.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Detectar', name: 'Análise de Eventos Adversos', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
-    ...['RS.MA-01: Plano de resposta a incidentes é executado.','RS.MA-02: Relatórios de incidentes são triados e validados.','RS.MA-03: Incidentes são categorizados e priorizados.','RS.MA-04: Incidentes são escalados.','RS.MA-05: Critérios para iniciar a recuperação de incidentes são aplicados.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Responder', name: 'Gerenciamento de Incidentes', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
-    ...['RS.AN-03: Análise é realizada para estabelecer o que aconteceu.','RS.AN-06: Ações durante a investigação são registradas.','RS.AN-07: Dados e metadados de incidentes são coletados.','RS.AN-08: Magnitude de um incidente é estimada e validada.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Responder', name: 'Análise de Incidentes', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
-    ...['RS.CO-02: Partes interessadas são notificadas.','RS.CO-03: Informações são compartilhadas.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Responder', name: 'Comunicação de Resposta a Incidentes', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
-    ...['RS.MI-01: Incidentes são contidos.','RS.MI-02: Incidentes são erradicados.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Responder', name: 'Mitigação de Incidentes', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
-    ...['RC.RP-01: Plano de recuperação é executado.','RC.RP-02: Ações de recuperação são selecionadas e priorizadas.','RC.RP-03: Integridade de backups é verificada.','RC.RP-04: Funções críticas da missão são consideradas.','RC.RP-05: Integridade dos ativos restaurados é verificada.','RC.RP-06: Fim da recuperação é declarado.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Recuperar', name: 'Execução do Plano de Recuperação', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
-    ...['RC.CO-03: Atividades de recuperação são comunicadas.','RC.CO-04: Atualizações públicas sobre a recuperação são compartilhadas.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Recuperar', name: 'Comunicação de Recuperação', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
-    // CIS Controls v8
-    ...Array.from({length: 5}, (_, i) => ({ id: `CIS-1.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 1: Inventário e Controle de Ativos Corporativos', name: `Salvaguarda 1.${i+1}`, description: `Descrição para a Salvaguarda 1.${i+1}`, status: ControlStatus.NotImplemented, processScore: 2, practiceScore: 2 })),
-    ...Array.from({length: 7}, (_, i) => ({ id: `CIS-2.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 2: Inventário e Controle de Ativos de Software', name: `Salvaguarda 2.${i+1}`, description: `Descrição para a Salvaguarda 2.${i+1}`, status: ControlStatus.NotImplemented })),
-    ...Array.from({length: 14}, (_, i) => ({ id: `CIS-3.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 3: Proteção de Dados', name: `Salvaguarda 3.${i+1}`, description: `Descrição para a Salvaguarda 3.${i+1}`, status: ControlStatus.NotImplemented, processScore: 4, practiceScore: 4 })),
-    ...Array.from({length: 12}, (_, i) => ({ id: `CIS-4.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 4: Configuração Segura de Ativos e Software', name: `Salvaguarda 4.${i+1}`, description: `Descrição para a Salvaguarda 4.${i+1}`, status: ControlStatus.NotImplemented })),
-    ...Array.from({length: 6}, (_, i) => ({ id: `CIS-5.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 5: Gerenciamento de Contas', name: `Salvaguarda 5.${i+1}`, description: `Descrição para a Salvaguarda 5.${i+1}`, status: ControlStatus.NotImplemented })),
-    ...Array.from({length: 8}, (_, i) => ({ id: `CIS-6.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 6: Gerenciamento de Controle de Acesso', name: `Salvaguarda 6.${i+1}`, description: `Descrição para a Salvaguarda 6.${i+1}`, status: ControlStatus.FullyImplemented, processScore: 5, practiceScore: 5 })),
-    ...Array.from({length: 7}, (_, i) => ({ id: `CIS-7.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 7: Gerenciamento Contínuo de Vulnerabilidades', name: `Salvaguarda 7.${i+1}`, description: `Descrição para a Salvaguarda 7.${i+1}`, status: ControlStatus.NotImplemented })),
-    ...Array.from({length: 12}, (_, i) => ({ id: `CIS-8.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 8: Gerenciamento de Logs de Auditoria', name: `Salvaguarda 8.${i+1}`, description: `Descrição para a Salvaguarda 8.${i+1}`, status: ControlStatus.NotImplemented })),
-    ...Array.from({length: 7}, (_, i) => ({ id: `CIS-9.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 9: Proteções de Email e Navegador Web', name: `Salvaguarda 9.${i+1}`, description: `Descrição para a Salvaguarda 9.${i+1}`, status: ControlStatus.NotImplemented })),
-    ...Array.from({length: 7}, (_, i) => ({ id: `CIS-10.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 10: Defesas contra Malware', name: `Salvaguarda 10.${i+1}`, description: `Descrição para a Salvaguarda 10.${i+1}`, status: ControlStatus.NotImplemented })),
-    ...Array.from({length: 5}, (_, i) => ({ id: `CIS-11.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 11: Recuperação de Dados', name: `Salvaguarda 11.${i+1}`, description: `Descrição para a Salvaguarda 11.${i+1}`, status: ControlStatus.NotImplemented })),
-    ...Array.from({length: 8}, (_, i) => ({ id: `CIS-12.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 12: Gerenciamento de Infraestrutura de Rede', name: `Salvaguarda 12.${i+1}`, description: `Descrição para a Salvaguarda 12.${i+1}`, status: ControlStatus.NotImplemented })),
-    ...Array.from({length: 11}, (_, i) => ({ id: `CIS-13.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 13: Monitoramento e Defesa da Rede', name: `Salvaguarda 13.${i+1}`, description: `Descrição para a Salvaguarda 13.${i+1}`, status: ControlStatus.NotImplemented })),
-    ...Array.from({length: 9}, (_, i) => ({ id: `CIS-14.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 14: Conscientização e Treinamento em Segurança', name: `Salvaguarda 14.${i+1}`, description: `Descrição para a Salvaguarda 14.${i+1}`, status: ControlStatus.NotImplemented })),
-    ...Array.from({length: 7}, (_, i) => ({ id: `CIS-15.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 15: Gerenciamento de Provedores de Serviço', name: `Salvaguarda 15.${i+1}`, description: `Descrição para a Salvaguarda 15.${i+1}`, status: ControlStatus.NotImplemented })),
-    ...Array.from({length: 14}, (_, i) => ({ id: `CIS-16.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 16: Segurança de Software de Aplicação', name: `Salvaguarda 16.${i+1}`, description: `Descrição para a Salvaguarda 16.${i+1}`, status: ControlStatus.NotImplemented })),
-    ...Array.from({length: 9}, (_, i) => ({ id: `CIS-17.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 17: Gerenciamento de Resposta a Incidentes', name: `Salvaguarda 17.${i+1}`, description: `Descrição para a Salvaguarda 17.${i+1}`, status: ControlStatus.NotImplemented })),
-    ...Array.from({length: 5}, (_, i) => ({ id: `CIS-18.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 18: Teste de Penetração', name: `Salvaguarda 18.${i+1}`, description: `Descrição para a Salvaguarda 18.${i+1}`, status: ControlStatus.NotImplemented })),
-];
-
-// --- Mock API Layer (Simulates a backend) ---
-const apiClient = {
-    _latency: 500,
-    _db: {
-        risks: JSON.parse(JSON.stringify(initialRisks)) as Risk[],
-        assets: JSON.parse(JSON.stringify(initialAssets)) as Asset[],
-        obsolescenceItems: JSON.parse(JSON.stringify(initialObsolescenceItems)) as ObsolescenceItem[],
-        dataControls: JSON.parse(JSON.stringify(initialDataControls)) as DataControl[],
-        complianceControls: JSON.parse(JSON.stringify(initialControls)) as Control[],
-    },
-    // Risks
-    async getRisks(): Promise<Risk[]> {
-        await new Promise(res => setTimeout(res, this._latency));
-        return JSON.parse(JSON.stringify(this._db.risks));
-    },
-    async createRisk(riskData: Omit<Risk, 'id' | 'creationDate'>): Promise<Risk> {
-        await new Promise(res => setTimeout(res, this._latency + 200));
-        const maxId = this._db.risks.reduce((max, r) => Math.max(r.id, max), 0);
-        const newRisk: Risk = { ...riskData, id: maxId + 1, creationDate: new Date().toISOString() };
-        this._db.risks.push(newRisk);
-        return JSON.parse(JSON.stringify(newRisk));
-    },
-    async updateRisk(riskData: Risk): Promise<Risk> {
-        await new Promise(res => setTimeout(res, this._latency + 200));
-        const index = this._db.risks.findIndex(r => r.id === riskData.id);
-        if (index === -1) throw new Error("Risk not found");
-        this._db.risks[index] = riskData;
-        return JSON.parse(JSON.stringify(riskData));
-    },
-    async deleteRisk(riskId: number): Promise<{ id: number }> {
-        await new Promise(res => setTimeout(res, this._latency + 300));
-        const initialLength = this._db.risks.length;
-        this._db.risks = this._db.risks.filter(r => r.id !== riskId);
-        if (this._db.risks.length === initialLength) throw new Error("Risk not found");
-        return { id: riskId };
-    },
-    // Assets
-    async getAssets(): Promise<Asset[]> {
-        await new Promise(res => setTimeout(res, this._latency));
-        return JSON.parse(JSON.stringify(this._db.assets));
-    },
-    async createAsset(assetData: Omit<Asset, 'id'>): Promise<Asset> {
-        await new Promise(res => setTimeout(res, this._latency));
-        const maxId = this._db.assets.reduce((max, a) => Math.max(a.id, max), 0);
-        const newAsset: Asset = { ...assetData, id: maxId + 1 };
-        this._db.assets.push(newAsset);
-        return JSON.parse(JSON.stringify(newAsset));
-    },
-    async updateAsset(assetData: Asset): Promise<Asset> {
-        await new Promise(res => setTimeout(res, this._latency));
-        const index = this._db.assets.findIndex(a => a.id === assetData.id);
-        if (index === -1) throw new Error("Asset not found");
-        this._db.assets[index] = assetData;
-        return JSON.parse(JSON.stringify(assetData));
-    },
-    async deleteAsset(assetId: number): Promise<{ id: number }> {
-        await new Promise(res => setTimeout(res, this._latency));
-        this._db.assets = this._db.assets.filter(a => a.id !== assetId);
-        return { id: assetId };
-    },
-    // Obsolescence
-    async getObsolescenceItems(): Promise<ObsolescenceItem[]> {
-        await new Promise(res => setTimeout(res, this._latency));
-        return JSON.parse(JSON.stringify(this._db.obsolescenceItems));
-    },
-    async createObsolescenceItem(itemData: Omit<ObsolescenceItem, 'id'>): Promise<ObsolescenceItem> {
-        await new Promise(res => setTimeout(res, this._latency));
-        const maxId = this._db.obsolescenceItems.reduce((max, i) => Math.max(i.id, max), 0);
-        const newItem: ObsolescenceItem = { ...itemData, id: maxId + 1 };
-        this._db.obsolescenceItems.push(newItem);
-        return JSON.parse(JSON.stringify(newItem));
-    },
-    async updateObsolescenceItem(itemData: ObsolescenceItem): Promise<ObsolescenceItem> {
-        await new Promise(res => setTimeout(res, this._latency));
-        const index = this._db.obsolescenceItems.findIndex(i => i.id === itemData.id);
-        if (index === -1) throw new Error("Item not found");
-        this._db.obsolescenceItems[index] = itemData;
-        return JSON.parse(JSON.stringify(itemData));
-    },
-    async deleteObsolescenceItem(itemId: number): Promise<{ id: number }> {
-        await new Promise(res => setTimeout(res, this._latency));
-        this._db.obsolescenceItems = this._db.obsolescenceItems.filter(i => i.id !== itemId);
-        return { id: itemId };
-    },
-    // Data Controls
-    async getDataControls(): Promise<DataControl[]> {
-        await new Promise(res => setTimeout(res, this._latency));
-        return JSON.parse(JSON.stringify(this._db.dataControls));
-    },
-    async createDataControl(controlData: Omit<DataControl, 'id'>): Promise<DataControl> {
-        await new Promise(res => setTimeout(res, this._latency));
-        const maxId = this._db.dataControls.reduce((max, c) => Math.max(c.id, max), 0);
-        const newControl: DataControl = { ...controlData, id: maxId + 1 };
-        this._db.dataControls.push(newControl);
-        return JSON.parse(JSON.stringify(newControl));
-    },
-    async updateDataControl(controlData: DataControl): Promise<DataControl> {
-        await new Promise(res => setTimeout(res, this._latency));
-        const index = this._db.dataControls.findIndex(c => c.id === controlData.id);
-        if (index === -1) throw new Error("Data Control not found");
-        this._db.dataControls[index] = controlData;
-        return JSON.parse(JSON.stringify(controlData));
-    },
-    async deleteDataControl(controlId: number): Promise<{ id: number }> {
-        await new Promise(res => setTimeout(res, this._latency));
-        this._db.dataControls = this._db.dataControls.filter(c => c.id !== controlId);
-        return { id: controlId };
-    },
-    // Compliance Controls
-    async getComplianceControls(): Promise<Control[]> {
-        await new Promise(res => setTimeout(res, this._latency));
-        return JSON.parse(JSON.stringify(this._db.complianceControls));
-    },
-    async updateComplianceControl(controlData: Control): Promise<Control> {
-        await new Promise(res => setTimeout(res, this._latency));
-        const index = this._db.complianceControls.findIndex(c => c.id === controlData.id);
-        if (index === -1) throw new Error("Compliance Control not found");
-        this._db.complianceControls[index] = controlData;
-        return JSON.parse(JSON.stringify(controlData));
-    },
-    // Data Management
-    async resetData(): Promise<void> {
-        await new Promise(res => setTimeout(res, this._latency));
-        this._db.risks = JSON.parse(JSON.stringify(initialRisks));
-        this._db.assets = JSON.parse(JSON.stringify(initialAssets));
-        this._db.obsolescenceItems = JSON.parse(JSON.stringify(initialObsolescenceItems));
-        this._db.dataControls = JSON.parse(JSON.stringify(initialDataControls));
-        this._db.complianceControls = JSON.parse(JSON.stringify(initialControls));
-    }
+// --- ICONS WRAPPER ---
+const Icon = ({ name, ...props }) => {
+  const LucideIcon = {
+    ChevronDown, X, Sidebar, Home, Shield, Database, AlertTriangle, ChevronsUpDown, Settings, Users, LogOut, PlusCircle, Edit, Trash2, Eye, Sun, Moon, CheckCircle, AlertCircle, Info
+  }[name];
+  return LucideIcon ? <LucideIcon {...props} /> : null;
 };
 
+// --- DATABASE API CLIENT (FIREBASE) ---
+const firebaseApiClient = (db) => ({
+  getAll: (collectionName, callback) => {
+    const q = query(collection(db, collectionName));
+    return onSnapshot(q, (querySnapshot) => {
+      const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      callback(data);
+    }, (error) => {
+      console.error(`Error fetching ${collectionName}: `, error);
+      callback([]);
+    });
+  },
+  create: async (collectionName, data) => {
+    const docRef = await addDoc(collection(db, collectionName), data);
+    return { id: docRef.id, ...data };
+  },
+  update: async (collectionName, id, data) => {
+    const docRef = doc(db, collectionName, id);
+    await updateDoc(docRef, data);
+    return { id, ...data };
+  },
+  remove: async (collectionName, id) => {
+    await deleteDoc(doc(db, collectionName, id));
+  },
+  findUserByEmail: async (email) => {
+    const q = query(collection(db, 'users'), where('email', '==', email));
+    const querySnapshot = await getDocs(q);
+    if (querySnapshot.empty) return null;
+    const userDoc = querySnapshot.docs[0];
+    return { id: userDoc.id, ...userDoc.data() };
+  }
+});
 
-// --- Toast Notification System ---
-interface ToastMessage { id: number; message: string; type: 'success' | 'error'; }
-const ToastContext = createContext({ addToast: (message: string, type: 'success' | 'error') => {} });
+// --- CONTEXTS ---
+const AuthContext = createContext(null);
+const DbContext = createContext(null);
+const ToastContext = createContext(null);
+const ThemeContext = createContext({ theme: 'dark', toggleTheme: () => {} });
+
+// --- HOOKS ---
+const useAuth = () => useContext(AuthContext);
+const useDb = () => useContext(DbContext);
 const useToast = () => useContext(ToastContext);
+const useTheme = () => useContext(ThemeContext);
 
-// Fix: Explicitly type props for the Toast component using React.FC to ensure it's recognized as a React component, which correctly handles the special 'key' prop.
-const Toast: React.FC<{ message: string; type: 'success' | 'error'; onDismiss: () => void; }> = ({ message, type, onDismiss }) => {
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            onDismiss();
-        }, 5000);
-        return () => clearTimeout(timer);
-    }, [onDismiss]);
-
-    const isSuccess = type === 'success';
-    return (
-        <div className={`flex items-center gap-4 w-full max-w-sm p-4 rounded-lg shadow-lg text-white ${isSuccess ? 'bg-green-600' : 'bg-danger'} animate-fade-in-up`}>
-            {isSuccess ? <CheckCircle size={24} /> : <XCircle size={24} />}
-            <p className="text-sm font-semibold">{message}</p>
-            <button onClick={onDismiss} className="ml-auto -mx-1.5 -my-1.5 p-1.5 rounded-lg hover:bg-white/20 inline-flex h-8 w-8">
-                <span className="sr-only">Dismiss</span>
-                <XCircle className="w-5 h-5" />
-            </button>
-        </div>
-    );
-};
-
-// Fix: Explicitly type the 'children' prop to resolve ambiguity in type inference, satisfying the TypeScript compiler's requirement for the prop.
-const ToastProvider: React.FC<{children: React.ReactNode}> = ({ children }) => {
-    const [toasts, setToasts] = useState<ToastMessage[]>([]);
-
-    const addToast = (message, type) => {
-        setToasts(prev => [...prev, { id: Date.now(), message, type }]);
-    };
-    
-    const removeToast = (id) => {
-        setToasts(prev => prev.filter(toast => toast.id !== id));
-    };
-
-    return (
-        <ToastContext.Provider value={{ addToast }}>
-            {children}
-            <div className="fixed bottom-4 right-4 z-[100] space-y-2">
-                {toasts.map(toast => (
-                    <Toast key={toast.id} message={toast.message} type={toast.type} onDismiss={() => removeToast(toast.id)} />
-                ))}
-            </div>
-        </ToastContext.Provider>
-    );
-};
-
-
-// --- UI Components ---
-
-const Header = ({ user, onLogout }) => (
-    <header className="bg-surface p-4 border-b border-border-color flex justify-between items-center">
-        <div className="flex items-center gap-3">
-            <div className="bg-primary p-2 rounded-lg">
-                <Shield className="h-8 w-8 text-white" />
-            </div>
-            <div>
-                <h1 className="text-lg font-bold text-text-primary">EXA GRC</h1>
-                <p className="text-xs text-text-secondary">Plataforma Integrada de Gestão de Riscos e Conformidade</p>
-            </div>
-        </div>
-        <div className="flex items-center gap-4">
-            <span className="text-xs text-text-secondary">Bem-vindo, {user.name}</span>
-            <div className="w-10 h-10 bg-secondary rounded-full flex items-center justify-center font-bold text-background">
-                {user.name.charAt(0)}
-            </div>
-             <button onClick={onLogout} title="Sair" className="p-2 text-text-secondary hover:text-danger transition-colors">
-                <LogOut size={20} />
-            </button>
-        </div>
-    </header>
-);
-
-const NavItem = ({ icon: Icon, text, active, onClick }) => (
-    <li
-        className={`flex items-center p-3 my-1 rounded-lg cursor-pointer transition-colors text-sm ${
-      active ? 'bg-primary/20 text-primary' : 'hover:bg-surface text-text-secondary'
-    }`}
-        onClick={onClick}
-    >
-        <Icon className="h-5 w-5 mr-3" />
-        <span className="font-medium">{text}</span>
-    </li>
-);
-
-const Sidebar = ({ activePage, setActivePage }) => (
-    <aside className="w-64 bg-surface p-4 flex flex-col">
-        <nav className="flex-grow">
-            <ul>
-                <NavItem icon={LayoutDashboard} text="Dashboard" active={activePage === 'Dashboard'} onClick={() => setActivePage('Dashboard')} />
-                <NavItem icon={AlertTriangle} text="Riscos" active={activePage === 'Riscos'} onClick={() => setActivePage('Riscos')} />
-                <NavItem icon={GanttChartSquare} text="Ativos" active={activePage === 'Ativos'} onClick={() => setActivePage('Ativos')} />
-                <NavItem icon={Clock} text="Obsolescência" active={activePage === 'Obsolescência'} onClick={() => setActivePage('Obsolescência')} />
-                <NavItem icon={Shield} text="Conformidade" active={activePage === 'Conformidade'} onClick={() => setActivePage('Conformidade')} />
-                <NavItem icon={DatabaseZap} text="Controles de Dados" active={activePage === 'Controles de Dados'} onClick={() => setActivePage('Controles de Dados')} />
-                <NavItem icon={Bot} text="Análise de IA" active={activePage === 'Análise de IA'} onClick={() => setActivePage('Análise de IA')} />
-            </ul>
-        </nav>
-        <div className="mt-auto">
-            <ul>
-                <NavItem icon={Settings} text="Configurações" active={activePage === 'Configurações'} onClick={() => setActivePage('Configurações')} />
-            </ul>
-        </div>
-    </aside>
-);
-
-const Card: React.FC<{ children?: React.ReactNode; className?: string; }> = ({ children, className = '' }) => (
-    <div className={`bg-surface rounded-lg p-6 ${className}`}>
-        {children}
+// --- UI COMPONENTS ---
+const Tooltip = ({ children, text }) => (
+  <div className="relative group flex items-center">
+    {children}
+    <div className="absolute left-full ml-4 w-auto p-2 min-w-max rounded-md shadow-md text-white bg-gray-800 border border-gray-700 text-xs font-bold transition-all duration-100 scale-0 group-hover:scale-100 origin-left">
+      {text}
     </div>
+  </div>
 );
 
-const RiskHeatmap = ({ risks }) => {
-    const heatmapData = useMemo(() => {
-        const grid = Array(5).fill(null).map(() => Array(5).fill(null).map(() => []));
-        risks.forEach(risk => {
-            grid[5 - risk.impact][risk.probability - 1].push(risk);
-        });
-        return grid;
-    }, [risks]);
-
-    const getCellColor = (count) => {
-        if (count === 0) return 'bg-gray-700/50';
-        if (count === 1) return 'bg-yellow-500/60';
-        if (count === 2) return 'bg-orange-500/70';
-        return 'bg-red-600/80';
-    };
-
-    return (
-        <Card>
-            <h2 className="text-base font-semibold mb-4">Heatmap de Riscos</h2>
-            <div className="flex">
-                <div className="flex items-center justify-center transform -rotate-90 -translate-x-12">
-                    <span className="text-xs font-medium text-text-secondary">Impacto</span>
-                </div>
-                <div className="grid grid-cols-5 gap-1 flex-grow">
-                    {heatmapData.flat().map((risksInCell, index) => (
-                        <div key={index} className={`w-full aspect-square rounded ${getCellColor(risksInCell.length)} flex items-center justify-center font-bold text-lg text-white tooltip-container`} title={risksInCell.map(r => r.title).join(', ')}>
-                            {risksInCell.length > 0 && risksInCell.length}
-                        </div>
-                    ))}
-                    <div className="col-span-5 flex justify-between text-xs text-text-secondary mt-1">
-                        <span>1 (Raro)</span>
-                        <span>2 (Improvável)</span>
-                        <span>3 (Possível)</span>
-                        <span>4 (Provável)</span>
-                        <span>5 (Quase Certo)</span>
-                    </div>
-                    <div className="col-span-5 text-center text-xs font-medium text-text-secondary mt-2">
-                        Probabilidade
-                    </div>
-                </div>
-                <div className="flex flex-col justify-between text-xs text-text-secondary ml-1">
-                    <span>5 (Catastrófico)</span>
-                    <span>4 (Alto)</span>
-                    <span>3 (Médio)</span>
-                    <span>2 (Baixo)</span>
-                    <span>1 (Insignificante)</span>
-                </div>
-            </div>
-        </Card>
-    );
+const Modal = ({ isOpen, onClose, title, children }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50" onClick={onClose}>
+      <div className="bg-surface rounded-lg shadow-xl w-full max-w-lg p-6 border border-border-color" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-text-primary">{title}</h2>
+          <button onClick={onClose} className="text-text-secondary hover:text-text-primary">
+            <Icon name="X" size={24} />
+          </button>
+        </div>
+        <div>{children}</div>
+      </div>
+    </div>
+  );
 };
 
-const CircularProgress = ({ percentage, color, size = 100 }) => {
-    const strokeWidth = 10;
-    const radius = (size - strokeWidth) / 2;
-    const circumference = radius * 2 * Math.PI;
-    const offset = circumference - (percentage / 100) * circumference;
+const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message }) => (
+  <Modal isOpen={isOpen} onClose={onClose} title={title}>
+    <p className="text-text-secondary mb-6">{message}</p>
+    <div className="flex justify-end gap-4">
+      <button onClick={onClose} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-700 text-white transition-colors">Cancelar</button>
+      <button onClick={onConfirm} className="px-4 py-2 rounded-md bg-danger hover:bg-red-700 text-white transition-colors">Confirmar</button>
+    </div>
+  </Modal>
+);
 
-    return (
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
-            <circle
-                className="text-surface"
-                strokeWidth={strokeWidth}
-                stroke="currentColor"
-                fill="transparent"
-                r={radius}
-                cx={size / 2}
-                cy={size / 2}
-            />
-            <circle
-                className={color}
-                strokeWidth={strokeWidth}
-                strokeDasharray={circumference}
-                strokeDashoffset={offset}
-                strokeLinecap="round"
-                stroke="currentColor"
-                fill="transparent"
-                r={radius}
-                cx={size / 2}
-                cy={size / 2}
-                style={{ transition: 'stroke-dashoffset 0.5s ease-in-out' }}
-            />
-            <text x="50%" y="50%" textAnchor="middle" dy=".3em" className="text-lg font-bold fill-current text-text-primary rotate-90 origin-center">
-                {`${percentage}%`}
-            </text>
-        </svg>
-    );
+const Toast = ({ message, type, onDismiss }) => {
+  const icons = { success: 'CheckCircle', error: 'AlertCircle', info: 'Info' };
+  const colors = { success: 'bg-secondary', error: 'bg-danger', info: 'bg-primary' };
+  const [isExiting, setIsExiting] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsExiting(true);
+      setTimeout(onDismiss, 300);
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [onDismiss]);
+  
+  const handleDismiss = () => {
+      setIsExiting(true);
+      setTimeout(onDismiss, 300);
+  }
+
+  return (
+    <div className={`fixed bottom-5 right-5 flex items-center gap-4 p-4 rounded-lg shadow-lg text-white ${colors[type]} ${isExiting ? 'animate-fade-out-down' : 'animate-fade-in-up'}`}>
+      <Icon name={icons[type]} size={24} />
+      <span>{message}</span>
+      <button onClick={handleDismiss} className="ml-4">
+        <Icon name="X" size={20} />
+      </button>
+    </div>
+  );
 };
 
-const SkeletonLoader: React.FC<{ rows?: number; cols?: number; }> = ({ rows = 5, cols = 8 }) => {
-    return (
-         <>
-            {Array.from({ length: rows }).map((_, i) => (
-                 <tr key={i} className="border-t border-border-color">
-                    {Array.from({ length: cols }).map((_, j) => (
-                        <td key={j} className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
-                    ))}
-                </tr>
-            ))}
-        </>
-    );
+const ToastProvider = ({ children }) => {
+  const [toasts, setToasts] = useState([]);
+
+  const addToast = (message, type = 'info') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+  };
+
+  const removeToast = id => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
+  };
+
+  return (
+    <ToastContext.Provider value={addToast}>
+      {children}
+      <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2">
+        {toasts.map(toast => (
+          <Toast key={toast.id} {...toast} onDismiss={() => removeToast(toast.id)} />
+        ))}
+      </div>
+    </ToastContext.Provider>
+  );
 };
 
+const Spinner = () => (
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+);
 
-const MaturityAndComplianceScores = ({ isLoading, controls }) => {
-    const summary = useMemo(() => {
-        if (!controls) return null;
-        const initial = {
-            [FrameworkName.NIST]: { total: 0, fully: 0, scores: [] as number[] },
-            [FrameworkName.CIS]: { total: 0, fully: 0, scores: [] as number[] },
-            [FrameworkName.LGPD]: { total: 0, fully: 0, scores: [] as number[] },
-        };
+const EmptyState = ({ title, message, action }) => (
+  <div className="text-center py-16 px-6 bg-surface rounded-lg border border-dashed border-border-color">
+    <AlertTriangle className="mx-auto h-12 w-12 text-text-secondary" />
+    <h3 className="mt-2 text-lg font-semibold text-text-primary">{title}</h3>
+    <p className="mt-1 text-sm text-text-secondary">{message}</p>
+    {action && <div className="mt-6">{action}</div>}
+  </div>
+);
 
-        controls.forEach(control => {
-            if (control.framework in initial) {
-                initial[control.framework].total++;
-                if (control.status === ControlStatus.FullyImplemented) {
-                    initial[control.framework].fully++;
-                }
-                if (typeof control.processScore === 'number' && typeof control.practiceScore === 'number') {
-                    initial[control.framework].scores.push((control.processScore + control.practiceScore) / 2);
-                }
-            }
-        });
 
-        const results: Record<string, { compliance: number; maturity: string }> = {};
-        for (const fw in initial) {
-            const data = initial[fw];
-            const compliance = data.total > 0 ? (data.fully / data.total) * 100 : 0;
-            const maturity = data.scores.length > 0 ? data.scores.reduce((a, b) => a + b, 0) / data.scores.length : 0;
-            results[fw] = { compliance: Math.round(compliance), maturity: maturity.toFixed(1) };
-        }
-        return results;
-    }, [controls]);
+// --- PROVIDERS ---
+const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(JSON.parse(localStorage.getItem('user')));
 
-    if (isLoading || !summary) {
-        return (
-            <Card className="lg:col-span-4">
-                <div className="h-4 w-1/3 bg-surface/50 rounded animate-pulse mb-4"></div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                        <div key={i} className="bg-background/50 p-4 rounded-lg flex flex-col items-center">
-                             <div className="h-4 w-20 bg-surface/50 rounded animate-pulse mb-3"></div>
-                             <div className="h-32 w-full bg-surface/50 rounded animate-pulse"></div>
-                        </div>
-                    ))}
-                </div>
-            </Card>
-        );
+  const login = (userData) => {
+    localStorage.setItem('user', JSON.stringify(userData));
+    setUser(userData);
+  };
+  const logout = () => {
+    localStorage.removeItem('user');
+    setUser(null);
+  };
+  const value = { user, login, logout, isAuthenticated: !!user };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+const DbProvider = ({ children }) => {
+  const [db, setDb] = useState(null);
+  const [api, setApi] = useState(null);
+
+  useEffect(() => {
+    const configString = localStorage.getItem('firebaseConfig');
+    if (configString) {
+      try {
+        const config = JSON.parse(configString);
+        const app = initializeApp(config);
+        const firestore = getFirestore(app);
+        setDb(firestore);
+        setApi(firebaseApiClient(firestore));
+      } catch (error) {
+        console.error("Failed to initialize Firebase:", error);
+      }
     }
+  }, []);
 
-    return (
-        <Card className="lg:col-span-4">
-            <h2 className="text-base font-semibold mb-4">Maturidade e Conformidade</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {Object.keys(summary).map((framework) => {
-                    const data = summary[framework];
-                    return (
-                        <div key={framework} className="bg-background/50 p-4 rounded-lg flex flex-col items-center">
-                            <h3 className="font-bold text-sm mb-3">{framework}</h3>
-                            <div className="flex items-center justify-around w-full">
-                                <div className="flex flex-col items-center">
-                                    <CircularProgress percentage={data.compliance} color="text-primary" size={120} />
-                                    <span className="text-xs font-semibold mt-2 text-text-secondary">% Conformidade</span>
-                                </div>
-                                <div className="flex flex-col items-center">
-                                    <div className="text-5xl font-bold text-secondary">{data.maturity}</div>
-                                    <div className="text-sm text-text-secondary">/ 5.0</div>
-                                    <span className="text-xs font-semibold mt-2 text-text-secondary">Score CMM</span>
-                                </div>
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        </Card>
-    );
+  return <DbContext.Provider value={{ db, api, isDbReady: !!db }}>{children}</DbContext.Provider>;
 };
 
-const RiskByTypeChart = ({ risks }) => {
-    const summary = useMemo(() => {
-        const initialSummary = Object.fromEntries(
-            Object.values(RiskType).map(type => [type, 0])
-        ) as Record<RiskType, number>;
-
-        return risks.reduce((acc, risk) => {
-            if (risk.type in acc) {
-                acc[risk.type]++;
-            }
-            return acc;
-        }, initialSummary);
-    }, [risks]);
-
-    const sortedSummary = Object.entries(summary).sort(([, a], [, b]) => (b as number) - (a as number));
-    const maxCount = Math.max(...sortedSummary.map(([, count]) => count as number), 0) || 1;
-
-    const riskTypeColors: Record<RiskType, string> = {
-        [RiskType.Operational]: 'bg-blue-500',
-        [RiskType.Compliance]: 'bg-indigo-500',
-        [RiskType.Financial]: 'bg-green-500',
-        [RiskType.Strategic]: 'bg-purple-500',
-        [RiskType.Obsolescence]: 'bg-gray-500',
-        [RiskType.Security]: 'bg-red-500',
-    };
-
-    return (
-        <Card>
-            <h2 className="text-base font-semibold mb-4">Riscos por Categoria</h2>
-            <div className="space-y-3">
-                {sortedSummary.map(([type, count]) => (
-                    <div key={type} className="grid grid-cols-4 items-center gap-2 text-sm">
-                        <span className="col-span-1 text-text-secondary truncate pr-2" title={type}>{type}</span>
-                        <div className="col-span-3 flex items-center gap-2">
-                           <div className="w-full bg-surface/50 rounded-full h-4">
-                               <div
-                                   className={`${riskTypeColors[type as RiskType]} h-4 rounded-full transition-all duration-500 ease-out`}
-                                   style={{ width: `${((count as number) / maxCount) * 100}%` }}
-                               ></div>
-                           </div>
-                           <span className="font-bold font-mono w-8 text-right">{count as number}</span>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </Card>
-    );
-};
-
-const ObsolescenceDashboardCard = ({ isLoading, items }) => {
-    const summary = useMemo(() => {
-        if (!items) return null;
-        const today = new Date();
-        const obsoleteItems = items.filter(item => new Date(item.endOfSupportDate) < today);
-        const totalItems = items.length;
-        const overallPercentage = totalItems > 0 ? Math.round((obsoleteItems.length / totalItems) * 100) : 0;
-
-        const byCategory = Object.values(ObsolescenceAssetType).reduce((acc, type) => {
-            const categoryItems = items.filter(item => item.assetType === type);
-            const categoryObsolete = obsoleteItems.filter(item => item.assetType === type);
-            acc[type] = {
-                total: categoryItems.length,
-                obsolete: categoryObsolete.length,
-            };
-            return acc;
-        }, {} as Record<ObsolescenceAssetType, { total: number, obsolete: number }>);
-        
-        return { overallPercentage, byCategory };
-    }, [items]);
+const ThemeProvider = ({ children }) => {
+    const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
     
-    if (isLoading || !summary) {
-        return (
-            <Card>
-                <div className="h-4 w-2/3 bg-surface/50 rounded animate-pulse mb-4"></div>
-                <div className="flex flex-col gap-6">
-                    <div className="h-32 w-full bg-surface/50 rounded animate-pulse"></div>
-                    <div className="h-40 w-full bg-surface/50 rounded animate-pulse"></div>
-                </div>
-            </Card>
-        );
-    }
-    
-    return (
-        <Card>
-            <h2 className="text-base font-semibold mb-4">Resumo de Obsolescência</h2>
-            <div className="flex flex-col gap-6">
-                <div className="flex items-center gap-6">
-                    <div className="flex-shrink-0">
-                        <CircularProgress percentage={summary.overallPercentage} color="text-danger" size={120} />
-                    </div>
-                    <div>
-                        <h3 className="font-bold text-lg">Obsolescência Geral</h3>
-                        <p className="text-text-secondary text-sm">Percentual de itens com suporte encerrado.</p>
-                    </div>
-                </div>
-                <div>
-                     <h3 className="font-semibold text-sm mb-3">Obsoletos por Categoria</h3>
-                     <div className="space-y-3">
-                        {Object.keys(summary.byCategory).map((type) => {
-                            const data = summary.byCategory[type as ObsolescenceAssetType];
-                            return (
-                                <div key={type} className="text-xs">
-                                    <div className="flex justify-between items-center mb-1">
-                                        <span className="font-medium text-text-secondary">{type}</span>
-                                        <span className="font-mono">{data.obsolete} / {data.total}</span>
-                                    </div>
-                                    <div className="w-full bg-surface/50 rounded-full h-2">
-                                        <div
-                                           className="bg-danger h-2 rounded-full"
-                                           style={{ width: data.total > 0 ? `${(data.obsolete / data.total) * 100}%` : '0%' }}
-                                        ></div>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                     </div>
-                </div>
-            </div>
-        </Card>
-    );
-};
-
-
-const DashboardPage = () => {
-    const [risks, setRisks] = useState<Risk[] | null>(null);
-    const [controls, setControls] = useState<Control[] | null>(null);
-    const [obsolescenceItems, setObsolescenceItems] = useState<ObsolescenceItem[] | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const toast = useToast();
-
     useEffect(() => {
-        const fetchDashboardData = async () => {
-            try {
-                setIsLoading(true);
-                const [fetchedRisks, fetchedControls, fetchedObsolescenceItems] = await Promise.all([
-                    apiClient.getRisks(),
-                    apiClient.getComplianceControls(),
-                    apiClient.getObsolescenceItems()
-                ]);
-                setRisks(fetchedRisks);
-                setControls(fetchedControls);
-                setObsolescenceItems(fetchedObsolescenceItems);
-            } catch (err) {
-                toast.addToast('Falha ao carregar os dados do dashboard.', 'error');
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        fetchDashboardData();
-    }, [toast]);
+        const root = window.document.documentElement;
+        root.classList.remove(theme === 'dark' ? 'light' : 'dark');
+        root.classList.add(theme);
+        localStorage.setItem('theme', theme);
+    }, [theme]);
+    
+    const toggleTheme = () => {
+        setTheme(prevTheme => prevTheme === 'dark' ? 'light' : 'dark');
+    };
 
-    const riskStatusCounts = useMemo(() => {
-        if (!risks) return null;
-        const initialCounts = Object.values(RiskStatus).reduce((acc, status) => {
-            acc[status] = 0;
-            return acc;
-        }, {} as Record<RiskStatus, number>);
-
-        return risks.reduce((acc: Record<RiskStatus, number>, risk) => {
-            acc[risk.status] = (acc[risk.status] || 0) + 1;
-            return acc;
-        }, initialCounts);
-    }, [risks]);
-
-    return (
-        <div className="p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <Card className="lg:col-span-1 bg-gradient-to-br from-red-500 to-danger"><h3 className="text-base font-semibold">Riscos Abertos</h3><p className="text-3xl font-bold">{isLoading ? '...' : riskStatusCounts?.[RiskStatus.Open]}</p></Card>
-            <Card className="lg:col-span-1 bg-gradient-to-br from-yellow-500 to-orange-500"><h3 className="text-base font-semibold">Em Andamento</h3><p className="text-3xl font-bold">{isLoading ? '...' : riskStatusCounts?.[RiskStatus.InProgress]}</p></Card>
-            <Card className="lg:col-span-1 bg-gradient-to-br from-green-500 to-secondary"><h3 className="text-base font-semibold">Riscos Mitigados</h3><p className="text-3xl font-bold">{isLoading ? '...' : riskStatusCounts?.[RiskStatus.Mitigated]}</p></Card>
-            <Card className="lg:col-span-1 bg-gradient-to-br from-blue-500 to-primary"><h3 className="text-base font-semibold">Riscos Aceitos</h3><p className="text-3xl font-bold">{isLoading ? '...' : riskStatusCounts?.[RiskStatus.Accepted]}</p></Card>
-            
-            <MaturityAndComplianceScores isLoading={isLoading} controls={controls} />
-
-            <div className="lg:col-span-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {isLoading || !risks ? (
-                    <Card><div className="h-64 w-full bg-surface/50 rounded animate-pulse"></div></Card>
-                ) : (
-                    <RiskHeatmap risks={risks} />
-                )}
-                {isLoading || !risks ? (
-                     <Card><div className="h-64 w-full bg-surface/50 rounded animate-pulse"></div></Card>
-                ) : (
-                    <RiskByTypeChart risks={risks} />
-                )}
-                 <ObsolescenceDashboardCard isLoading={isLoading} items={obsolescenceItems} />
-            </div>
-        </div>
-    );
+    return <ThemeContext.Provider value={{ theme, toggleTheme }}>{children}</ThemeContext.Provider>;
 };
 
 
-// --- Risks Page Components ---
+// --- LAYOUT COMPONENTS ---
+const Sidebar = ({ isSidebarOpen, setSidebarOpen }) => {
+  const navItems = [
+    { name: 'Dashboard', icon: 'Home', path: '#/' },
+    { name: 'Riscos', icon: 'Shield', path: '#/risks' },
+    { name: 'Ativos', icon: 'Database', path: '#/assets' },
+    { name: 'Ameaças', icon: 'AlertTriangle', path: '#/threats' },
+    { name: 'Controles', icon: 'ChevronsUpDown', path: '#/controls' },
+    { name: 'Usuários', icon: 'Users', path: '#/users' },
+    { name: 'Configurações', icon: 'Settings', path: '#/settings' },
+  ];
 
-const RiskModal = ({ risk, onSave, onClose, isSaving }) => {
-    const [formData, setFormData] = useState(
-        risk || {
-            title: '', description: '', probability: 1, impact: 1, status: RiskStatus.Open, owner: '',
-            dueDate: new Date().toISOString().split('T')[0], type: RiskType.Operational, sla: 30,
-            planResponsible: '', technicalResponsible: '', actionPlan: '', completionDate: '',
-        }
-    );
-
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        const finalValue = (name === 'probability' || name === 'impact' || name === 'sla') ? Number(value) : value;
-        setFormData(prev => ({ ...prev, [name]: finalValue }));
-    };
-
-    const handleSubmit = (e) => { e.preventDefault(); onSave(formData); };
-
-    return (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-            <div className="bg-surface rounded-lg p-8 w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                <h2 className="text-lg font-bold mb-6 flex-shrink-0">{risk ? `Editar Risco #${formData.id}` : 'Adicionar Novo Risco'}</h2>
-                <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto pr-4">
-                    <div>
-                        <label className="block text-xs font-medium mb-1">Título do Risco</label>
-                        <input type="text" name="title" value={formData.title} onChange={handleChange} required className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium mb-1">Descrição Detalhada</label>
-                        <textarea name="description" value={formData.description} onChange={handleChange} rows="3" className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm"></textarea>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div>
-                            <label className="block text-xs font-medium mb-1">Probabilidade (1-5)</label>
-                            <select name="probability" value={formData.probability} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm">
-                                {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium mb-1">Impacto (1-5)</label>
-                            <select name="impact" value={formData.impact} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm">
-                                {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
-                            </select>
-                        </div>
-                         <div>
-                             <label className="block text-xs font-medium mb-1">Status do Risco</label>
-                             <select name="status" value={formData.status} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm">
-                                 {Object.values(RiskStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                             </select>
-                         </div>
-                         <div>
-                            <label className="block text-xs font-medium mb-1">Tipo do Risco</label>
-                             <select name="type" value={formData.type} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm">
-                                 {Object.values(RiskType).map(t => <option key={t} value={t}>{t}</option>)}
-                             </select>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                         <div>
-                             <label className="block text-xs font-medium mb-1">Responsável (Área)</label>
-                             <input type="text" name="owner" value={formData.owner} onChange={handleChange} required className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
-                        </div>
-                        <div>
-                             <label className="block text-xs font-medium mb-1">Responsável pelo Plano</label>
-                             <input type="text" name="planResponsible" value={formData.planResponsible} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
-                        </div>
-                        <div>
-                             <label className="block text-xs font-medium mb-1">Responsável Técnico</label>
-                             <input type="text" name="technicalResponsible" value={formData.technicalResponsible} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
-                        </div>
-                    </div>
-                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                         <div>
-                             <label className="block text-xs font-medium mb-1">Prazo Final</label>
-                             <input type="date" name="dueDate" value={formData.dueDate} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
-                         </div>
-                          <div>
-                             <label className="block text-xs font-medium mb-1">Data de Finalização</label>
-                             <input type="date" name="completionDate" value={formData.completionDate || ''} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
-                         </div>
-                         <div>
-                             <label className="block text-xs font-medium mb-1">SLA (dias)</label>
-                             <input type="number" name="sla" value={formData.sla} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
-                         </div>
-                     </div>
-                    <div>
-                        <label className="block text-xs font-medium mb-1">Plano de Ação</label>
-                        <textarea name="actionPlan" value={formData.actionPlan} onChange={handleChange} rows="4" className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm"></textarea>
-                    </div>
-                     <div className="flex justify-end gap-4 pt-4 flex-shrink-0">
-                        <button type="button" onClick={onClose} disabled={isSaving} className="bg-surface/50 hover:bg-surface/80 font-semibold py-2 px-4 rounded-lg text-sm disabled:opacity-50">Cancelar</button>
-                        <button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm w-28 disabled:opacity-50">
-                            {isSaving ? <RefreshCw className="animate-spin mx-auto" size={20} /> : 'Salvar'}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
+  return (
+    <aside className={`bg-surface border-r border-border-color flex flex-col transition-all duration-300 ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
+      <div className={`flex items-center border-b border-border-color p-4 ${isSidebarOpen ? 'justify-between' : 'justify-center'}`}>
+        {isSidebarOpen && <h1 className="text-xl font-bold text-primary">EXA GRC</h1>}
+        <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 rounded-md hover:bg-gray-700">
+          <Icon name="Sidebar" size={24} />
+        </button>
+      </div>
+      <nav className="flex-1 px-4 py-4 space-y-2">
+        {navItems.map(item => (
+          <a key={item.name} href={item.path}>
+             <Tooltip text={item.name}>
+              <div className={`flex items-center p-3 rounded-md text-text-secondary hover:bg-primary hover:text-white ${isSidebarOpen ? '' : 'justify-center'}`}>
+                <Icon name={item.icon} size={24} />
+                {isSidebarOpen && <span className="ml-4 font-medium">{item.name}</span>}
+              </div>
+            </Tooltip>
+          </a>
+        ))}
+      </nav>
+    </aside>
+  );
 };
 
-const RiskTable = ({ risks, onEdit, onDelete, highlightedRowId, isLoading }) => {
-    const formatDate = (dateString) => {
-        if (!dateString) return 'N/A';
-        const date = new Date(dateString);
-        date.setMinutes(date.getMinutes() + date.getTimezoneOffset());
-        return new Intl.DateTimeFormat('pt-BR').format(date);
-    };
+const Header = () => {
+  const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
-    const getRiskClassification = (probability, impact) => {
-        const score = probability * impact;
-        if (score <= 4) return { text: 'BAIXO', className: 'bg-green-600 text-white' };
-        if (score <= 9) return { text: 'MÉDIO', className: 'bg-yellow-500 text-black' };
-        if (score <= 12) return { text: 'ALTO', className: 'bg-orange-500 text-white' };
-        return { text: 'CRÍTICO', className: 'bg-red-600 text-white' };
-    };
-
-    const calculateAgingDays = (creationDate) => {
-        return Math.ceil(Math.abs(new Date().getTime() - new Date(creationDate).getTime()) / (1000 * 60 * 60 * 24));
-    };
-    
-    const getDueDateStatus = (risk) => {
-        if (risk.completionDate) return { text: 'Finalizado', className: 'bg-green-500/20 text-green-400' };
-        if (!risk.dueDate) return { text: 'Sem Prazo', className: 'bg-gray-500/20 text-gray-400' };
-    
-        const due = new Date(risk.dueDate);
-        due.setMinutes(due.getMinutes() + due.getTimezoneOffset()); 
-    
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        
-        const timeDiff = due.getTime() - today.getTime();
-        const dayDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
-    
-        if (dayDiff < 0) {
-            return { text: 'Atrasado', className: 'bg-red-500/20 text-red-400' };
-        } else if (dayDiff <= 7) {
-            return { text: 'Vence em breve', className: 'bg-yellow-500/20 text-yellow-400' };
-        } else {
-            return { text: 'No Prazo', className: 'bg-blue-500/20 text-blue-400' };
-        }
-    };
-
-    return (
-        <div className="bg-surface rounded-lg overflow-x-auto">
-            <table className="w-full text-left table-auto">
-                <thead className="bg-surface/50 text-xs text-text-secondary uppercase">
-                    <tr>
-                        <th className="px-2 py-3 font-semibold">ID</th>
-                        <th className="px-2 py-3 font-semibold">Risco</th>
-                        <th className="px-2 py-3 font-semibold text-center">Criação</th>
-                        <th className="px-2 py-3 font-semibold text-center">Prob.</th>
-                        <th className="px-2 py-3 font-semibold text-center">Impacto</th>
-                        <th className="px-2 py-3 font-semibold text-center">Classe</th>
-                        <th className="px-2 py-3 font-semibold">Responsável</th>
-                        <th className="px-2 py-3 font-semibold text-center">Prazo Final</th>
-                        <th className="px-2 py-3 font-semibold text-center">Status Prazo</th>
-                        <th className="px-2 py-3 font-semibold">Resolução</th>
-                        <th className="px-2 py-3 font-semibold text-center">Aging</th>
-                        <th className="px-2 py-3 font-semibold">Plano</th>
-                        <th className="px-2 py-3 font-semibold text-center">Ações</th>
-                    </tr>
-                </thead>
-                <tbody className="text-xs">
-                    {isLoading ? (
-                       <SkeletonLoader rows={5} cols={13} />
-                    ) : (
-                        risks.map(risk => {
-                            const classification = getRiskClassification(risk.probability, risk.impact);
-                            const dueDateStatus = getDueDateStatus(risk);
-
-                            return (
-                                <tr key={risk.id} className={`border-t border-border-color hover:bg-surface/50 ${risk.id === highlightedRowId ? 'highlight-row' : ''}`}>
-                                    <td className="px-2 py-3 font-mono">{risk.id}</td>
-                                    <td className="px-2 py-3 max-w-xs"><p className="font-semibold truncate" title={risk.title}>{risk.title}</p></td>
-                                    <td className="px-2 py-3 text-center">{formatDate(risk.creationDate)}</td>
-                                    <td className="px-2 py-3 text-center">{risk.probability}</td>
-                                    <td className="px-2 py-3 text-center">{risk.impact}</td>
-                                    <td className="px-2 py-3 text-center"><span className={`px-2 py-0.5 rounded-full font-bold ${classification.className}`}>{classification.text}</span></td>
-                                    <td className="px-2 py-3 truncate" title={risk.owner}>{risk.owner}</td>
-                                    <td className="px-2 py-3 text-center">{formatDate(risk.dueDate)}</td>
-                                    <td className="px-2 py-3 text-center"><span className={`px-2 py-0.5 rounded-full font-semibold ${dueDateStatus.className}`}>{dueDateStatus.text}</span></td>
-                                    <td className="px-2 py-3">{risk.status}</td>
-                                    <td className="px-2 py-3 text-center font-mono">{calculateAgingDays(risk.creationDate)}</td>
-                                    <td className="px-2 py-3 max-w-xs"><p className="truncate" title={risk.actionPlan}>{risk.actionPlan}</p></td>
-                                    <td className="px-2 py-3 text-center">
-                                        <div className="flex gap-1 justify-center">
-                                            <button onClick={() => onEdit(risk)} className="text-text-secondary hover:text-primary p-1"><Edit size={14} /></button>
-                                            <button onClick={() => onDelete(risk.id)} className="text-text-secondary hover:text-danger p-1"><Trash2 size={14} /></button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            );
-                        })
-                    )}
-                </tbody>
-            </table>
+  return (
+    <header className="bg-surface border-b border-border-color h-16 flex items-center justify-between px-6">
+      <div>{/* Can add breadcrumbs or page title here */}</div>
+      <div className="flex items-center gap-4">
+        <button onClick={toggleTheme} className="p-2 rounded-full hover:bg-gray-700">
+          <Icon name={theme === 'dark' ? 'Sun' : 'Moon'} size={20} />
+        </button>
+        <div className="text-right">
+          <div className="font-semibold text-text-primary">{user?.name}</div>
+          <div className="text-sm text-text-secondary">{user?.role}</div>
         </div>
-    );
+        <button onClick={logout} className="p-2 rounded-full text-text-secondary hover:text-danger hover:bg-gray-700">
+          <Tooltip text="Sair">
+             <Icon name="LogOut" size={20} />
+          </Tooltip>
+        </button>
+      </div>
+    </header>
+  );
 };
 
-const RisksPage = ({ highlightedItem, setHighlightedItem }) => {
-    const [risks, setRisks] = useState<Risk[]>([]);
+const Layout = ({ children }) => {
+  const [isSidebarOpen, setSidebarOpen] = useState(true);
+  return (
+    <div className="flex h-screen bg-background">
+      <Sidebar isSidebarOpen={isSidebarOpen} setSidebarOpen={setSidebarOpen} />
+      <div className="flex-1 flex flex-col">
+        <Header />
+        <main className="flex-1 p-6 overflow-y-auto">
+          {children}
+        </main>
+      </div>
+    </div>
+  );
+};
+
+// --- PAGES ---
+const Dashboard = () => (
+  <div>
+    <h1 className="text-3xl font-bold text-text-primary mb-6">Dashboard de Gestão de Riscos</h1>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+       {/* Placeholder cards */}
+      <div className="bg-surface p-6 rounded-lg border border-border-color">
+        <h2 className="text-lg font-semibold text-text-secondary">Riscos Abertos</h2>
+        <p className="text-4xl font-bold text-primary mt-2">12</p>
+      </div>
+      <div className="bg-surface p-6 rounded-lg border border-border-color">
+        <h2 className="text-lg font-semibold text-text-secondary">Risco Residual Médio</h2>
+        <p className="text-4xl font-bold text-risk-high mt-2">15.8</p>
+      </div>
+       <div className="bg-surface p-6 rounded-lg border border-border-color">
+        <h2 className="text-lg font-semibold text-text-secondary">Controles Efetivos</h2>
+        <p className="text-4xl font-bold text-secondary mt-2">85%</p>
+      </div>
+       <div className="bg-surface p-6 rounded-lg border border-border-color">
+        <h2 className="text-lg font-semibold text-text-secondary">Ameaças Ativas</h2>
+        <p className="text-4xl font-bold text-risk-medium mt-2">4</p>
+      </div>
+    </div>
+  </div>
+);
+
+const RisksPage = () => {
+    const { api } = useDb();
+    const addToast = useToast();
+    const [risks, setRisks] = useState([]);
+    const [assets, setAssets] = useState([]);
+    const [threats, setThreats] = useState([]);
+    const [controls, setControls] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [editingRisk, setEditingRisk] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
-    const fileInputRef = useRef(null);
-    const toast = useToast();
+    const [editingRisk, setEditingRisk] = useState(null);
+    const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
-    const highlightedRowId = (highlightedItem?.page === 'Riscos') ? highlightedItem.id : null;
-
-    const fetchRisks = async () => {
-        try {
-            setIsLoading(true);
-            setError(null);
-            const fetchedRisks = await apiClient.getRisks();
-            setRisks(fetchedRisks);
-        } catch (err) {
-            setError('Falha ao carregar os dados de riscos.');
-            toast.addToast('Falha ao carregar os dados de riscos.', 'error');
-        } finally {
-            setIsLoading(false);
-        }
-    };
+    useEffect(() => {
+        if (!api) return;
+        const unsubRisks = api.getAll('risks', (data) => { setRisks(data); setIsLoading(false); });
+        const unsubAssets = api.getAll('assets', setAssets);
+        const unsubThreats = api.getAll('threats', setThreats);
+        const unsubControls = api.getAll('controls', setControls);
+        return () => { unsubRisks(); unsubAssets(); unsubThreats(); unsubControls(); };
+    }, [api]);
     
-    useEffect(() => {
-        fetchRisks();
-    }, []);
+    const getRiskScore = (likelihood, impact) => likelihood * impact;
+    const getRiskLevel = (score) => {
+        if (score <= 5) return { label: 'Baixo', color: 'risk-low' };
+        if (score <= 12) return { label: 'Médio', color: 'risk-medium' };
+        if (score <= 16) return { label: 'Alto', color: 'risk-high' };
+        return { label: 'Crítico', color: 'risk-critical' };
+    };
 
-    useEffect(() => {
-        let timerId = null;
-        if (highlightedRowId) {
-            timerId = setTimeout(() => {
-                setHighlightedItem({ page: null, id: null });
-            }, 2000); // Animation duration
-        }
-        return () => {
-            if (timerId) clearTimeout(timerId);
-        };
-    }, [highlightedRowId, setHighlightedItem]);
-
-    const filteredRisks = useMemo(() =>
-        risks.filter(risk =>
-            risk.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            risk.description.toLowerCase().includes(searchTerm.toLowerCase())
-        ), [risks, searchTerm]
-    );
-
-    const openModal = (risk = null) => { setEditingRisk(risk); setIsModalOpen(true); };
-    const closeModal = () => setIsModalOpen(false);
-
-    const handleSave = async (riskData) => {
-        setIsSaving(true);
+    const handleSaveRisk = async (formData) => {
         try {
             if (editingRisk) {
-                await apiClient.updateRisk(riskData);
-                toast.addToast('Risco atualizado com sucesso!', 'success');
+                await api.update('risks', editingRisk.id, formData);
+                addToast('Risco atualizado com sucesso!', 'success');
             } else {
-                await apiClient.createRisk(riskData);
-                toast.addToast('Risco adicionado com sucesso!', 'success');
+                await api.create('risks', { ...formData, createdAt: new Date().toISOString() });
+                addToast('Risco criado com sucesso!', 'success');
             }
-            closeModal();
-            fetchRisks();
+            setIsModalOpen(false);
+            setEditingRisk(null);
         } catch (error) {
-            toast.addToast('Falha ao salvar o risco.', 'error');
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const handleDelete = async (riskId) => {
-        if (window.confirm('Tem certeza que deseja excluir este risco?')) {
-            try {
-                await apiClient.deleteRisk(riskId);
-                toast.addToast('Risco excluído com sucesso!', 'success');
-                fetchRisks();
-            } catch (error) {
-                toast.addToast('Falha ao excluir o risco.', 'error');
-            }
-        }
-    };
-    
-    const handleDownloadTemplate = () => {
-        const headers = "title,description,probability,impact,owner,dueDate,status,type,sla,planResponsible,technicalResponsible,actionPlan,completionDate";
-        const example = `"Vulnerabilidade em Servidor Web","Servidor Apache desatualizado na versão 2.4.1","4","5","Equipe de Infra","2024-12-31","${RiskStatus.Open}","${RiskType.Security}","30","João Silva","Maria Souza","Aplicar patch de segurança XYZ",""`;
-        const csvContent = "data:text/csv;charset=utf-8," + headers + "\n" + example;
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", "template_riscos.csv");
-        document.body.appendChild(link); link.click(); document.body.removeChild(link);
-    };
-
-    const handleFileChange = (event) => {
-        // This would need to be adapted to use the API for each new risk.
-        toast.addToast('Importação via CSV ainda não integrada com a API.', 'error');
-    };
-
-    return (
-        <div className="p-6">
-            <h1 className="text-xl font-bold mb-6">Gerenciamento de Riscos</h1>
-            <div className="flex justify-between items-center mb-4">
-                <div className="relative w-1/3">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" size={20} />
-                    <input type="text" placeholder="Buscar por título ou descrição..."
-                        className="w-full bg-background border border-border-color rounded-lg py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                        value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-                </div>
-                <div className="flex gap-2">
-                    <button onClick={handleDownloadTemplate} className="flex items-center gap-2 bg-surface hover:bg-surface/80 text-text-primary font-semibold py-2 px-4 rounded-lg transition-colors text-sm"><Download size={18} />Template CSV</button>
-                    <input type="file" accept=".csv" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
-                     <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 bg-surface hover:bg-surface/80 text-text-primary font-semibold py-2 px-4 rounded-lg transition-colors text-sm"><Upload size={18} />Importar CSV</button>
-                    <button onClick={() => openModal()} className="flex items-center gap-2 bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm"><Plus size={18} />Adicionar Risco</button>
-                </div>
-            </div>
-            
-            {error && <div className="text-center text-danger p-4 bg-danger/10 rounded-lg">{error}</div>}
-            
-            <RiskTable risks={filteredRisks} onEdit={openModal} onDelete={handleDelete} highlightedRowId={highlightedRowId} isLoading={isLoading} />
-
-            {isModalOpen && <RiskModal risk={editingRisk} onSave={handleSave} onClose={closeModal} isSaving={isSaving} />}
-        </div>
-    );
-};
-
-// --- Assets Page ---
-const AssetModal = ({ asset, onSave, onClose, isSaving }) => {
-    const [formData, setFormData] = useState(
-        asset || { name: '', type: AssetType.Server, criticality: AssetCriticality.Medium, owner: '' }
-    );
-
-    const handleChange = (e) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    const handleSubmit = (e) => { e.preventDefault(); onSave(formData); };
-
-    return (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-            <div className="bg-surface rounded-lg p-8 w-full max-w-lg" onClick={e => e.stopPropagation()}>
-                <h2 className="text-lg font-bold mb-6">{asset ? 'Editar Ativo' : 'Adicionar Novo Ativo'}</h2>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label className="block text-xs font-medium mb-1">Nome do Ativo</label>
-                        <input type="text" name="name" value={formData.name} onChange={handleChange} required className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-medium mb-1">Tipo</label>
-                            <select name="type" value={formData.type} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm">
-                                {Object.values(AssetType).map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium mb-1">Criticidade</label>
-                            <select name="criticality" value={formData.criticality} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm">
-                                {Object.values(AssetCriticality).map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium mb-1">Responsável (Área)</label>
-                        <input type="text" name="owner" value={formData.owner} onChange={handleChange} required className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
-                    </div>
-                    <div className="flex justify-end gap-4 pt-4">
-                        <button type="button" onClick={onClose} disabled={isSaving} className="bg-surface/50 hover:bg-surface/80 font-semibold py-2 px-4 rounded-lg text-sm disabled:opacity-50">Cancelar</button>
-                        <button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm w-28 disabled:opacity-50">
-                             {isSaving ? <RefreshCw className="animate-spin mx-auto" size={20} /> : 'Salvar'}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-};
-
-const AssetTable = ({ assets, onEdit, onDelete, highlightedRowId, isLoading }) => {
-    const getCriticalityClass = (criticality) => {
-        switch (criticality) {
-            case AssetCriticality.Critical: return 'bg-red-600 text-white';
-            case AssetCriticality.High: return 'bg-orange-500 text-white';
-            case AssetCriticality.Medium: return 'bg-yellow-500 text-black';
-            case AssetCriticality.Low: return 'bg-green-600 text-white';
-            default: return 'bg-gray-500 text-white';
-        }
-    };
-
-    return (
-        <div className="bg-surface rounded-lg overflow-x-auto">
-            <table className="w-full text-left table-auto">
-                <thead className="bg-surface/50 text-text-secondary uppercase text-xs">
-                    <tr>
-                        <th className="p-4 font-semibold">ID</th>
-                        <th className="p-4 font-semibold">Nome do Ativo</th>
-                        <th className="p-4 font-semibold">Tipo</th>
-                        <th className="p-4 font-semibold text-center">Criticidade</th>
-                        <th className="p-4 font-semibold">Responsável</th>
-                        <th className="p-4 font-semibold text-center">Ações</th>
-                    </tr>
-                </thead>
-                <tbody className="text-sm">
-                    {isLoading ? <SkeletonLoader rows={5} cols={6} /> : (
-                        assets.map(asset => (
-                            <tr key={asset.id} className={`border-t border-border-color hover:bg-surface/50 ${asset.id === highlightedRowId ? 'highlight-row' : ''}`}>
-                                <td className="p-4 font-mono">{asset.id}</td>
-                                <td className="p-4 font-semibold">{asset.name}</td>
-                                <td className="p-4 text-text-secondary">{asset.type}</td>
-                                <td className="p-4 text-center">
-                                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${getCriticalityClass(asset.criticality)}`}>
-                                        {asset.criticality.toUpperCase()}
-                                    </span>
-                                </td>
-                                <td className="p-4">{asset.owner}</td>
-                                <td className="p-4 text-center">
-                                    <div className="flex gap-2 justify-center">
-                                        <button onClick={() => onEdit(asset)} className="text-text-secondary hover:text-primary p-1"><Edit size={16} /></button>
-                                        <button onClick={() => onDelete(asset.id)} className="text-text-secondary hover:text-danger p-1"><Trash2 size={16} /></button>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))
-                    )}
-                </tbody>
-            </table>
-        </div>
-    );
-};
-
-const AssetsPage = ({ highlightedItem, setHighlightedItem }) => {
-    const [assets, setAssets] = useState<Asset[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingAsset, setEditingAsset] = useState(null);
-    const [isSaving, setIsSaving] = useState(false);
-    const toast = useToast();
-    
-    const highlightedRowId = (highlightedItem?.page === 'Ativos') ? highlightedItem.id : null;
-
-    const fetchAssets = async () => {
-        try {
-            setIsLoading(true);
-            setError(null);
-            const fetchedAssets = await apiClient.getAssets();
-            setAssets(fetchedAssets);
-        } catch (err) {
-            setError('Falha ao carregar os dados de ativos.');
-            toast.addToast('Falha ao carregar os dados de ativos.', 'error');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-    
-    useEffect(() => {
-        fetchAssets();
-    }, []);
-
-    useEffect(() => {
-        let timerId = null;
-        if (highlightedRowId) {
-            timerId = setTimeout(() => {
-                setHighlightedItem({ page: null, id: null });
-            }, 2000); // Animation duration
-        }
-        return () => { if (timerId) clearTimeout(timerId); };
-    }, [highlightedRowId, setHighlightedItem]);
-
-    const filteredAssets = useMemo(() =>
-        assets.filter(asset => asset.name.toLowerCase().includes(searchTerm.toLowerCase())),
-        [assets, searchTerm]
-    );
-
-    const openModal = (asset = null) => {
-        setEditingAsset(asset);
-        setIsModalOpen(true);
-    };
-    const closeModal = () => setIsModalOpen(false);
-
-    const handleSave = async (assetData) => {
-        setIsSaving(true);
-        try {
-            if (editingAsset) {
-                await apiClient.updateAsset(assetData);
-                toast.addToast('Ativo atualizado com sucesso!', 'success');
-            } else {
-                await apiClient.createAsset(assetData);
-                toast.addToast('Ativo adicionado com sucesso!', 'success');
-            }
-            closeModal();
-            fetchAssets();
-        } catch (error) {
-            toast.addToast('Falha ao salvar o ativo.', 'error');
-        } finally {
-            setIsSaving(false);
+            console.error("Error saving risk:", error);
+            addToast('Falha ao salvar o risco.', 'error');
         }
     };
 
     const handleDelete = async (id) => {
-        if (window.confirm('Tem certeza que deseja excluir este ativo?')) {
-             try {
-                await apiClient.deleteAsset(id);
-                toast.addToast('Ativo excluído com sucesso!', 'success');
-                fetchAssets();
-            } catch (error) {
-                toast.addToast('Falha ao excluir o ativo.', 'error');
-            }
+        try {
+            await api.remove('risks', id);
+            addToast('Risco excluído com sucesso!', 'success');
+            setConfirmDeleteId(null);
+        } catch (error) {
+            console.error("Error deleting risk:", error);
+            addToast('Falha ao excluir o risco.', 'error');
         }
     };
 
-    return (
-        <div className="p-6">
-            <h1 className="text-xl font-bold mb-6">Gerenciamento de Ativos</h1>
-            <div className="flex justify-between items-center mb-4">
-                <div className="relative w-1/3">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" size={20} />
-                    <input type="text" placeholder="Buscar por nome do ativo..."
-                        className="w-full bg-background border border-border-color rounded-lg py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                        value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+    const RiskForm = ({ risk, onSave, onCancel }) => {
+        const [formData, setFormData] = useState(risk || {
+            title: '', assetId: '', threatId: '', controlId: '', status: 'Open', likelihood: 3, impact: 3, owner: ''
+        });
+
+        const handleChange = (e) => {
+            const { name, value } = e.target;
+            setFormData(prev => ({ ...prev, [name]: name === 'likelihood' || name === 'impact' ? parseInt(value) : value }));
+        };
+
+        const handleSubmit = (e) => {
+            e.preventDefault();
+            onSave(formData);
+        };
+
+        return (
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <input type="text" name="title" value={formData.title} onChange={handleChange} placeholder="Título do Risco" required className="w-full p-2 bg-background border border-border-color rounded-md" />
+                <input type="text" name="owner" value={formData.owner} onChange={handleChange} placeholder="Responsável (ex: email@empresa.com)" required className="w-full p-2 bg-background border border-border-color rounded-md" />
+                <div className="grid grid-cols-2 gap-4">
+                    <select name="assetId" value={formData.assetId} onChange={handleChange} required className="w-full p-2 bg-background border border-border-color rounded-md"><option value="">Selecione o Ativo</option>{assets.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
+                    <select name="threatId" value={formData.threatId} onChange={handleChange} required className="w-full p-2 bg-background border border-border-color rounded-md"><option value="">Selecione a Ameaça</option>{threats.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
                 </div>
-                <button onClick={() => openModal()} className="flex items-center gap-2 bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm">
-                    <Plus size={18} /> Adicionar Ativo
+                 <select name="controlId" value={formData.controlId} onChange={handleChange} required className="w-full p-2 bg-background border border-border-color rounded-md"><option value="">Selecione o Controle</option>{controls.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+                 <select name="status" value={formData.status} onChange={handleChange} required className="w-full p-2 bg-background border border-border-color rounded-md">
+                    <option>Open</option><option>In Progress</option><option>Closed</option><option>Accepted</option>
+                </select>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="text-sm text-text-secondary">Probabilidade ({formData.likelihood})</label>
+                        <input type="range" name="likelihood" min="1" max="5" value={formData.likelihood} onChange={handleChange} className="w-full" />
+                    </div>
+                    <div>
+                        <label className="text-sm text-text-secondary">Impacto ({formData.impact})</label>
+                        <input type="range" name="impact" min="1" max="5" value={formData.impact} onChange={handleChange} className="w-full" />
+                    </div>
+                </div>
+                <div className="flex justify-end gap-4 pt-4">
+                    <button type="button" onClick={onCancel} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-700 text-white">Cancelar</button>
+                    <button type="submit" className="px-4 py-2 rounded-md bg-primary hover:bg-blue-700 text-white">Salvar</button>
+                </div>
+            </form>
+        );
+    };
+
+    return (
+        <div>
+            <div className="flex justify-between items-center mb-6">
+                <h1 className="text-3xl font-bold text-text-primary">Gestão de Riscos</h1>
+                <button onClick={() => { setEditingRisk(null); setIsModalOpen(true); }} className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary hover:bg-blue-700 text-white transition-colors">
+                    <Icon name="PlusCircle" size={20} />
+                    <span>Novo Risco</span>
                 </button>
             </div>
-            {error && <div className="text-center text-danger p-4 bg-danger/10 rounded-lg">{error}</div>}
-            <AssetTable assets={filteredAssets} onEdit={openModal} onDelete={handleDelete} highlightedRowId={highlightedRowId} isLoading={isLoading} />
-            {isModalOpen && <AssetModal asset={editingAsset} onSave={handleSave} onClose={closeModal} isSaving={isSaving} />}
-        </div>
-    );
-};
-
-
-// --- Obsolescence Page ---
-const ObsolescenceModal = ({ item, onSave, onClose, isSaving }) => {
-    const [formData, setFormData] = useState(
-        item || {
-            assetName: '', assetType: ObsolescenceAssetType.Software, vendor: '', version: '',
-            endOfLifeDate: '', endOfSupportDate: '', impactDescription: '', recommendedAction: '', owner: ''
-        }
-    );
-
-    const handleChange = (e) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    const handleSubmit = (e) => { e.preventDefault(); onSave(formData); };
-    
-    return (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-            <div className="bg-surface rounded-lg p-8 w-full max-w-3xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                <h2 className="text-lg font-bold mb-6 flex-shrink-0">{item ? 'Editar Item de Obsolescência' : 'Adicionar Item de Obsolescência'}</h2>
-                <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto pr-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-medium mb-1">Nome do Ativo</label>
-                            <input type="text" name="assetName" value={formData.assetName} onChange={handleChange} required className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium mb-1">Tipo de Ativo</label>
-                            <select name="assetType" value={formData.assetType} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm">
-                                {Object.values(ObsolescenceAssetType).map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium mb-1">Fabricante/Vendor</label>
-                            <input type="text" name="vendor" value={formData.vendor} onChange={handleChange} required className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium mb-1">Versão</label>
-                            <input type="text" name="version" value={formData.version} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium mb-1">Data de Fim de Vida (EOL)</label>
-                            <input type="date" name="endOfLifeDate" value={formData.endOfLifeDate} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium mb-1">Data de Fim de Suporte (EOS)</label>
-                            <input type="date" name="endOfSupportDate" value={formData.endOfSupportDate} onChange={handleChange} required className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium mb-1">Descrição do Impacto</label>
-                        <textarea name="impactDescription" value={formData.impactDescription} onChange={handleChange} rows="3" className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm"></textarea>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium mb-1">Ação Recomendada</label>
-                        <textarea name="recommendedAction" value={formData.recommendedAction} onChange={handleChange} rows="3" className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm"></textarea>
-                    </div>
-                     <div>
-                        <label className="block text-xs font-medium mb-1">Responsável (Área)</label>
-                        <input type="text" name="owner" value={formData.owner} onChange={handleChange} required className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
-                    </div>
-                    <div className="flex justify-end gap-4 pt-4 flex-shrink-0">
-                        <button type="button" onClick={onClose} disabled={isSaving} className="bg-surface/50 hover:bg-surface/80 font-semibold py-2 px-4 rounded-lg text-sm disabled:opacity-50">Cancelar</button>
-                        <button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm w-28 disabled:opacity-50">
-                             {isSaving ? <RefreshCw className="animate-spin mx-auto" size={20} /> : 'Salvar'}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-};
-
-const ObsolescenceTable = ({ items, onEdit, onDelete, isLoading }) => {
-    const formatDate = (dateString) => {
-        if (!dateString) return 'N/A';
-        const date = new Date(dateString);
-        date.setMinutes(date.getMinutes() + date.getTimezoneOffset());
-        return new Intl.DateTimeFormat('pt-BR').format(date);
-    };
-
-    const getStatus = (item) => {
-        const today = new Date();
-        const eos = new Date(item.endOfSupportDate);
-        if (today > eos) {
-            return { text: ObsolescenceStatus.Obsolete, className: 'bg-red-500/20 text-red-400' };
-        }
-        const diffDays = Math.ceil((eos.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        if (diffDays <= 180) { // 6 months
-            return { text: ObsolescenceStatus.NearingEOL, className: 'bg-yellow-500/20 text-yellow-400' };
-        }
-        return { text: ObsolescenceStatus.Supported, className: 'bg-green-500/20 text-green-400' };
-    };
-
-    return (
-        <div className="bg-surface rounded-lg overflow-x-auto">
-            <table className="w-full text-left table-auto">
-                <thead className="bg-surface/50 text-text-secondary uppercase text-xs">
-                    <tr>
-                        <th className="p-4 font-semibold">Ativo</th>
-                        <th className="p-4 font-semibold">Tipo</th>
-                        <th className="p-4 font-semibold">Versão</th>
-                        <th className="p-4 font-semibold text-center">Fim de Suporte (EOS)</th>
-                        <th className="p-4 font-semibold text-center">Status</th>
-                        <th className="p-4 font-semibold">Responsável</th>
-                        <th className="p-4 font-semibold text-center">Ações</th>
-                    </tr>
-                </thead>
-                <tbody className="text-xs">
-                    {isLoading ? <SkeletonLoader rows={5} cols={7} /> : (
-                        items.map(item => {
-                            const status = getStatus(item);
+            
+            <div className="bg-surface rounded-lg border border-border-color overflow-hidden">
+                {isLoading ? <div className="p-16 flex justify-center"><Spinner /></div> : 
+                 risks.length === 0 ? <EmptyState title="Nenhum Risco Cadastrado" message="Comece adicionando um novo risco para monitorá-lo." action={<button onClick={() => { setEditingRisk(null); setIsModalOpen(true); }} className="flex items-center gap-2 mx-auto px-4 py-2 rounded-md bg-primary hover:bg-blue-700 text-white transition-colors"><Icon name="PlusCircle" size={20} /><span>Adicionar Risco</span></button>} /> :
+                <table className="w-full text-left">
+                    <thead className="bg-gray-800">
+                        <tr>
+                            <th className="p-4">Título</th><th>Ativo</th><th>Status</th><th>Score</th><th>Nível</th><th>Responsável</th><th className="w-28">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {risks.map(risk => {
+                            const score = getRiskScore(risk.likelihood, risk.impact);
+                            const level = getRiskLevel(score);
+                            const asset = assets.find(a => a.id === risk.assetId);
                             return (
-                                <tr key={item.id} className="border-t border-border-color hover:bg-surface/50">
-                                    <td className="p-4 font-semibold">{item.assetName}</td>
-                                    <td className="p-4 text-text-secondary">{item.assetType}</td>
-                                    <td className="p-4 text-text-secondary">{item.version}</td>
-                                    <td className="p-4 text-center font-mono">{formatDate(item.endOfSupportDate)}</td>
-                                    <td className="p-4 text-center">
-                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${status.className}`}>{status.text}</span>
-                                    </td>
-                                    <td className="p-4">{item.owner}</td>
-                                    <td className="p-4 text-center">
-                                        <div className="flex gap-2 justify-center">
-                                            <button onClick={() => onEdit(item)} className="text-text-secondary hover:text-primary p-1"><Edit size={16} /></button>
-                                            <button onClick={() => onDelete(item.id)} className="text-text-secondary hover:text-danger p-1"><Trash2 size={16} /></button>
-                                        </div>
+                                <tr key={risk.id} className="border-b border-border-color hover:bg-gray-800">
+                                    <td className="p-4 font-medium">{risk.title}</td>
+                                    <td>{asset?.name || 'N/A'}</td>
+                                    <td><span className="px-2 py-1 text-xs font-semibold rounded-full bg-gray-700 text-gray-300">{risk.status}</span></td>
+                                    <td><span className="font-bold">{score}</span></td>
+                                    <td><span className={`px-2 py-1 text-xs font-bold rounded-full text-white bg-${level.color}`}>{level.label}</span></td>
+                                    <td>{risk.owner}</td>
+                                    <td className="p-4 flex gap-2">
+                                        <button onClick={() => { setEditingRisk(risk); setIsModalOpen(true); }} className="p-2 text-text-secondary hover:text-primary"><Icon name="Edit" size={18} /></button>
+                                        <button onClick={() => setConfirmDeleteId(risk.id)} className="p-2 text-text-secondary hover:text-danger"><Icon name="Trash2" size={18} /></button>
                                     </td>
                                 </tr>
                             );
-                        })
-                    )}
-                </tbody>
-            </table>
-        </div>
-    );
-};
-
-const ObsolescencePage = () => {
-    const [items, setItems] = useState<ObsolescenceItem[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingItem, setEditingItem] = useState(null);
-    const [isSaving, setIsSaving] = useState(false);
-    const toast = useToast();
-
-    const fetchItems = async () => {
-        try {
-            setIsLoading(true);
-            setError(null);
-            const fetchedItems = await apiClient.getObsolescenceItems();
-            setItems(fetchedItems);
-        } catch (err) {
-            setError('Falha ao carregar os dados de obsolescência.');
-            toast.addToast('Falha ao carregar os dados de obsolescência.', 'error');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchItems();
-    }, []);
-
-    const filteredItems = useMemo(() =>
-        items.filter(item => item.assetName.toLowerCase().includes(searchTerm.toLowerCase())),
-        [items, searchTerm]
-    );
-
-    const openModal = (item = null) => {
-        setEditingItem(item);
-        setIsModalOpen(true);
-    };
-    const closeModal = () => setIsModalOpen(false);
-
-    const handleSave = async (itemData) => {
-        setIsSaving(true);
-        try {
-            if (editingItem) {
-                await apiClient.updateObsolescenceItem(itemData);
-                toast.addToast('Item atualizado com sucesso!', 'success');
-            } else {
-                await apiClient.createObsolescenceItem(itemData);
-                toast.addToast('Item adicionado com sucesso!', 'success');
-            }
-            closeModal();
-            fetchItems();
-        } catch (error) {
-            toast.addToast('Falha ao salvar o item.', 'error');
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const handleDelete = async (id) => {
-        if (window.confirm('Tem certeza?')) {
-            try {
-                await apiClient.deleteObsolescenceItem(id);
-                toast.addToast('Item excluído com sucesso!', 'success');
-                fetchItems();
-            } catch (error) {
-                toast.addToast('Falha ao excluir o item.', 'error');
-            }
-        }
-    };
-
-    return (
-        <div className="p-6">
-            <h1 className="text-xl font-bold mb-6">Gerenciamento de Obsolescência</h1>
-            <div className="flex justify-between items-center mb-4">
-                 <div className="relative w-1/3">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" size={20} />
-                    <input type="text" placeholder="Buscar por nome do ativo..."
-                        className="w-full bg-background border border-border-color rounded-lg py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                        value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-                </div>
-                <button onClick={() => openModal()} className="flex items-center gap-2 bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm">
-                    <Plus size={18} /> Adicionar Item
-                </button>
+                        })}
+                    </tbody>
+                </table>}
             </div>
-            {error && <div className="text-center text-danger p-4 bg-danger/10 rounded-lg">{error}</div>}
-            <ObsolescenceTable items={filteredItems} onEdit={openModal} onDelete={handleDelete} isLoading={isLoading} />
-            {isModalOpen && <ObsolescenceModal item={editingItem} onSave={handleSave} onClose={closeModal} isSaving={isSaving} />}
+            
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingRisk ? 'Editar Risco' : 'Novo Risco'}>
+                <RiskForm risk={editingRisk} onSave={handleSaveRisk} onCancel={() => setIsModalOpen(false)} />
+            </Modal>
+            
+            <ConfirmModal 
+                isOpen={!!confirmDeleteId} 
+                onClose={() => setConfirmDeleteId(null)} 
+                onConfirm={() => handleDelete(confirmDeleteId)} 
+                title="Confirmar Exclusão"
+                message="Você tem certeza que deseja excluir este risco? Esta ação não pode ser desfeita."
+            />
         </div>
     );
 };
 
+const SettingsPage = () => {
+    const addToast = useToast();
+    const [apiKey, setApiKey] = useState(localStorage.getItem('geminiApiKey') || '');
 
-// --- Compliance Page ---
-const ComplianceModal = ({ control, onSave, onClose, isSaving }) => {
-    const [formData, setFormData] = useState({
-        status: control.status || ControlStatus.NotImplemented,
-        processScore: control.processScore || '',
-        practiceScore: control.practiceScore || ''
-    });
-
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        onSave({ 
-            ...control, 
-            status: formData.status,
-            processScore: formData.processScore === '' ? undefined : Number(formData.processScore),
-            practiceScore: formData.practiceScore === '' ? undefined : Number(formData.practiceScore),
-        });
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-            <div className="bg-surface rounded-lg p-8 w-full max-w-xl" onClick={e => e.stopPropagation()}>
-                <h2 className="text-lg font-bold mb-6">Editar Status do Controle</h2>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <p className="text-sm"><strong className="text-text-secondary">ID:</strong> {control.id}</p>
-                    <p className="text-sm"><strong className="text-text-secondary">Nome:</strong> {control.name}</p>
-                    <div>
-                        <label className="block text-xs font-medium mb-1">Status de Conformidade</label>
-                        <select name="status" value={formData.status} onChange={handleChange}
-                            className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm">
-                            {Object.values(ControlStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-medium mb-1">Score de Processo (1-5)</label>
-                            <select name="processScore" value={formData.processScore} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm">
-                                <option value="">N/A</option>
-                                {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                           <label className="block text-xs font-medium mb-1">Score de Prática (1-5)</label>
-                            <select name="practiceScore" value={formData.practiceScore} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm">
-                                <option value="">N/A</option>
-                                {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
-                            </select>
-                        </div>
-                    </div>
-                    <div className="flex justify-end gap-4 pt-4">
-                        <button type="button" onClick={onClose} disabled={isSaving} className="bg-surface/50 hover:bg-surface/80 font-semibold py-2 px-4 rounded-lg text-sm disabled:opacity-50">Cancelar</button>
-                        <button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm w-28 disabled:opacity-50">
-                            {isSaving ? <RefreshCw className="animate-spin mx-auto" size={20} /> : 'Salvar'}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-};
-
-const ComplianceTable = ({ controls, onEdit, isLoading }) => {
-    const getStatusClass = (status) => {
-        switch (status) {
-            case ControlStatus.FullyImplemented: return 'bg-green-500/20 text-green-400';
-            case ControlStatus.PartiallyImplemented: return 'bg-yellow-500/20 text-yellow-400';
-            case ControlStatus.InProgress: return 'bg-blue-500/20 text-blue-400';
-            case ControlStatus.NotImplemented: return 'bg-red-500/20 text-red-400';
-            default: return 'bg-gray-500/20 text-gray-400';
-        }
+    const handleSave = () => {
+        localStorage.setItem('geminiApiKey', apiKey);
+        addToast('Chave de API salva com sucesso!', 'success');
     };
     
     return (
-        <div className="bg-surface rounded-lg overflow-x-auto">
-            <table className="w-full text-left table-auto">
-                <thead className="bg-surface/50 text-text-secondary uppercase text-xs">
-                    <tr>
-                        <th className="p-3 font-semibold">ID</th>
-                        <th className="p-3 font-semibold">Framework</th>
-                        <th className="p-3 font-semibold">Controle</th>
-                        <th className="p-3 font-semibold">Descrição</th>
-                        <th className="p-3 font-semibold text-center">Status</th>
-                        <th className="p-3 font-semibold text-center">Proc.</th>
-                        <th className="p-3 font-semibold text-center">Prát.</th>
-                        <th className="p-3 font-semibold text-center">Score</th>
-                        <th className="p-3 font-semibold text-center">Ações</th>
-                    </tr>
-                </thead>
-                <tbody className="text-sm">
-                    {isLoading ? <SkeletonLoader rows={10} cols={9} /> : (
-                        controls.map(control => {
-                            const geral = (typeof control.processScore === 'number' && typeof control.practiceScore === 'number') 
-                                ? ((control.processScore + control.practiceScore) / 2).toFixed(1) 
-                                : 'N/A';
-
-                            return (
-                                <tr key={control.id} className="border-t border-border-color hover:bg-surface/50">
-                                    <td className="p-3 font-mono text-xs">{control.id}</td>
-                                    <td className="p-3 text-xs font-bold">{control.framework}</td>
-                                    <td className="p-3 font-semibold max-w-sm"><p className="truncate" title={control.name}>{control.name}</p><p className="text-xs text-text-secondary">{control.family}</p></td>
-                                    <td className="p-3 text-xs text-text-secondary max-w-md"><p className="truncate" title={control.description}>{control.description}</p></td>
-                                    <td className="p-3 text-center">
-                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusClass(control.status)}`}>
-                                            {control.status || 'N/A'}
-                                        </span>
-                                    </td>
-                                    <td className="p-3 text-center font-mono text-xs">{control.processScore || 'N/A'}</td>
-                                    <td className="p-3 text-center font-mono text-xs">{control.practiceScore || 'N/A'}</td>
-                                    <td className="p-3 text-center font-mono text-xs font-bold">{geral}</td>
-                                    <td className="p-3 text-center">
-                                        <button onClick={() => onEdit(control)} className="text-text-secondary hover:text-primary p-1"><Edit size={16} /></button>
-                                    </td>
-                                </tr>
-                            )
-                        })
-                    )}
-                </tbody>
-            </table>
-        </div>
-    );
-};
-
-const CompliancePage = () => {
-    const [controls, setControls] = useState<Control[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [activeFramework, setActiveFramework] = useState('Todos');
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingControl, setEditingControl] = useState(null);
-    const [isSaving, setIsSaving] = useState(false);
-    const toast = useToast();
-    
-    const fetchControls = async () => {
-        try {
-            setIsLoading(true);
-            setError(null);
-            const fetchedControls = await apiClient.getComplianceControls();
-            setControls(fetchedControls);
-        } catch (err) {
-            setError('Falha ao carregar os dados de conformidade.');
-            toast.addToast('Falha ao carregar os dados de conformidade.', 'error');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-    
-    useEffect(() => {
-        fetchControls();
-    }, []);
-
-    const filteredControls = useMemo(() =>
-        controls.filter(control =>
-            (activeFramework === 'Todos' || control.framework === activeFramework) &&
-            (control.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-             control.description.toLowerCase().includes(searchTerm.toLowerCase()))
-        ), [controls, searchTerm, activeFramework]
-    );
-
-    const openModal = (control) => {
-        setEditingControl(control);
-        setIsModalOpen(true);
-    };
-    const closeModal = () => setIsModalOpen(false);
-
-    const handleSave = async (updatedControl) => {
-        setIsSaving(true);
-        try {
-            await apiClient.updateComplianceControl(updatedControl);
-            toast.addToast('Controle atualizado com sucesso!', 'success');
-            closeModal();
-            // Optimistic update
-            setControls(controls.map(c => c.id === updatedControl.id ? updatedControl : c));
-        } catch(e) {
-            toast.addToast('Falha ao atualizar o controle.', 'error');
-        } finally {
-            setIsSaving(false);
-        }
-    };
-    
-    const frameworks = ['Todos', ...Object.values(FrameworkName)];
-
-    return (
-        <div className="p-6">
-            <h1 className="text-xl font-bold mb-6">Gerenciamento de Conformidade</h1>
-            <div className="flex justify-between items-center mb-4">
-                <div className="flex gap-2 p-1 bg-surface/50 rounded-lg">
-                    {frameworks.map(fw => (
-                        <button 
-                            key={fw} 
-                            onClick={() => setActiveFramework(fw)}
-                            className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${activeFramework === fw ? 'bg-primary text-white' : 'hover:bg-surface'}`}
-                        >
-                            {fw}
-                        </button>
-                    ))}
+        <div>
+            <h1 className="text-3xl font-bold text-text-primary mb-6">Configurações</h1>
+            <div className="bg-surface rounded-lg border border-border-color p-6 max-w-2xl">
+                <h2 className="text-xl font-bold mb-4">Configuração da IA (Google Gemini)</h2>
+                <p className="text-text-secondary mb-4">
+                    Insira sua chave de API do Google Gemini para habilitar funcionalidades de IA na plataforma.
+                    Sua chave é salva localmente no seu navegador e não é enviada para nossos servidores.
+                </p>
+                <div className="flex flex-col gap-2">
+                    <label htmlFor="apiKey" className="font-semibold">Chave de API do Google Gemini</label>
+                    <input 
+                        id="apiKey"
+                        type="password" 
+                        value={apiKey} 
+                        onChange={(e) => setApiKey(e.target.value)}
+                        placeholder="Cole sua chave de API aqui"
+                        className="w-full p-2 bg-background border border-border-color rounded-md"
+                    />
                 </div>
-                 <div className="relative w-1/3">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" size={20} />
-                    <input type="text" placeholder="Buscar por nome ou descrição..."
-                        className="w-full bg-background border border-border-color rounded-lg py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                        value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                 <div className="mt-6 flex justify-end">
+                    <button onClick={handleSave} className="px-4 py-2 rounded-md bg-primary hover:bg-blue-700 text-white transition-colors">
+                        Salvar Chave
+                    </button>
                 </div>
             </div>
-            {error && <div className="text-center text-danger p-4 bg-danger/10 rounded-lg">{error}</div>}
-            <ComplianceTable controls={filteredControls} onEdit={openModal} isLoading={isLoading} />
-            {isModalOpen && <ComplianceModal control={editingControl} onSave={handleSave} onClose={closeModal} isSaving={isSaving} />}
         </div>
     );
 };
 
+const PlaceholderPage = ({ title }) => (
+  <div>
+    <h1 className="text-3xl font-bold text-text-primary mb-6">{title}</h1>
+    <div className="bg-surface rounded-lg border border-border-color p-16 text-center">
+      <p className="text-text-secondary">Funcionalidade em desenvolvimento.</p>
+    </div>
+  </div>
+);
 
-// --- Data Controls Page ---
-const DataControlModal = ({ control, onSave, onClose, isSaving }) => {
-    const [formData, setFormData] = useState(
-        control || {
-            name: '', description: '', category: '', relatedRegulation: '',
-            status: DataControlStatus.Active, criticality: AssetCriticality.Medium, owner: ''
-        }
-    );
 
-    const handleChange = (e) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    const handleSubmit = (e) => { e.preventDefault(); onSave(formData); };
+// --- ROUTING ---
+const Router = () => {
+  const [hash, setHash] = useState(window.location.hash);
+  useEffect(() => {
+    const handleHashChange = () => setHash(window.location.hash);
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
-    return (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-            <div className="bg-surface rounded-lg p-8 w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                <h2 className="text-lg font-bold mb-6">{control ? 'Editar Controle de Dados' : 'Adicionar Novo Controle de Dados'}</h2>
-                <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto pr-4">
-                    <div>
-                        <label className="block text-xs font-medium mb-1">Nome do Controle</label>
-                        <input type="text" name="name" value={formData.name} onChange={handleChange} required className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium mb-1">Descrição</label>
-                        <textarea name="description" value={formData.description} onChange={handleChange} rows="3" className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm"></textarea>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-medium mb-1">Categoria</label>
-                            <input type="text" name="category" value={formData.category} onChange={handleChange} required className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium mb-1">Regulamentação Relacionada</label>
-                            <input type="text" name="relatedRegulation" value={formData.relatedRegulation} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium mb-1">Status</label>
-                            <select name="status" value={formData.status} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm">
-                                {Object.values(DataControlStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium mb-1">Criticidade</label>
-                            <select name="criticality" value={formData.criticality} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm">
-                                {Object.values(AssetCriticality).map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium mb-1">Responsável (Área)</label>
-                        <input type="text" name="owner" value={formData.owner} onChange={handleChange} required className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
-                    </div>
-                    <div className="flex justify-end gap-4 pt-4 flex-shrink-0">
-                        <button type="button" onClick={onClose} disabled={isSaving} className="bg-surface/50 hover:bg-surface/80 font-semibold py-2 px-4 rounded-lg text-sm disabled:opacity-50">Cancelar</button>
-                        <button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm w-28 disabled:opacity-50">
-                             {isSaving ? <RefreshCw className="animate-spin mx-auto" size={20} /> : 'Salvar'}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
+  const routes = {
+    '#/': <Dashboard />,
+    '#/risks': <RisksPage />,
+    '#/assets': <PlaceholderPage title="Ativos" />,
+    '#/threats': <PlaceholderPage title="Ameaças" />,
+    '#/controls': <PlaceholderPage title="Controles" />,
+    '#/users': <PlaceholderPage title="Usuários" />,
+    '#/settings': <SettingsPage />,
+  };
+  
+  return routes[hash] || routes['#/'];
 };
 
-const DataControlTable = ({ controls, onEdit, onDelete, isLoading }) => {
-    const getCriticalityClass = (criticality) => {
-        switch (criticality) {
-            case AssetCriticality.Critical: return 'bg-red-600 text-white';
-            case AssetCriticality.High: return 'bg-orange-500 text-white';
-            case AssetCriticality.Medium: return 'bg-yellow-500 text-black';
-            case AssetCriticality.Low: return 'bg-green-600 text-white';
-            default: return 'bg-gray-500 text-white';
-        }
-    };
-
-    const getStatusClass = (status) => {
-        switch (status) {
-            case DataControlStatus.Active: return 'bg-green-500/20 text-green-400';
-            case DataControlStatus.Inactive: return 'bg-gray-500/20 text-gray-400';
-            case DataControlStatus.InReview: return 'bg-yellow-500/20 text-yellow-400';
-            default: return 'bg-gray-500/20 text-gray-400';
-        }
-    };
-    
-    return (
-        <div className="bg-surface rounded-lg overflow-x-auto">
-            <table className="w-full text-left table-auto">
-                <thead className="bg-surface/50 text-text-secondary uppercase text-xs">
-                    <tr>
-                        <th className="p-4 font-semibold">ID</th>
-                        <th className="p-4 font-semibold">Nome do Controle</th>
-                        <th className="p-4 font-semibold">Categoria</th>
-                        <th className="p-4 font-semibold text-center">Criticidade</th>
-                        <th className="p-4 font-semibold text-center">Status</th>
-                        <th className="p-4 font-semibold">Responsável</th>
-                        <th className="p-4 font-semibold text-center">Ações</th>
-                    </tr>
-                </thead>
-                <tbody className="text-sm">
-                    {isLoading ? <SkeletonLoader rows={5} cols={7} /> : (
-                        controls.map(control => (
-                            <tr key={control.id} className="border-t border-border-color hover:bg-surface/50">
-                                <td className="p-4 font-mono">{control.id}</td>
-                                <td className="p-4 font-semibold">{control.name}</td>
-                                <td className="p-4 text-text-secondary">{control.category}</td>
-                                <td className="p-4 text-center">
-                                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${getCriticalityClass(control.criticality)}`}>
-                                        {control.criticality.toUpperCase()}
-                                    </span>
-                                </td>
-                                 <td className="p-4 text-center">
-                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusClass(control.status)}`}>
-                                        {control.status}
-                                    </span>
-                                </td>
-                                <td className="p-4">{control.owner}</td>
-                                <td className="p-4 text-center">
-                                    <div className="flex gap-2 justify-center">
-                                        <button onClick={() => onEdit(control)} className="text-text-secondary hover:text-primary p-1"><Edit size={16} /></button>
-                                        <button onClick={() => onDelete(control.id)} className="text-text-secondary hover:text-danger p-1"><Trash2 size={16} /></button>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))
-                    )}
-                </tbody>
-            </table>
-        </div>
-    );
-};
-
-const DataControlsPage = () => {
-    const [dataControls, setDataControls] = useState<DataControl[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingControl, setEditingControl] = useState(null);
-    const [isSaving, setIsSaving] = useState(false);
-    const toast = useToast();
-
-    const fetchControls = async () => {
-        try {
-            setIsLoading(true);
-            setError(null);
-            const fetchedControls = await apiClient.getDataControls();
-            setDataControls(fetchedControls);
-        } catch (err) {
-            setError('Falha ao carregar os dados de controles.');
-            toast.addToast('Falha ao carregar os dados de controles.', 'error');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchControls();
-    }, []);
-
-
-    const filteredControls = useMemo(() =>
-        dataControls.filter(control =>
-            control.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            control.description.toLowerCase().includes(searchTerm.toLowerCase())
-        ),
-        [dataControls, searchTerm]
-    );
-
-    const openModal = (control = null) => {
-        setEditingControl(control);
-        setIsModalOpen(true);
-    };
-    const closeModal = () => setIsModalOpen(false);
-
-    const handleSave = async (controlData) => {
-        setIsSaving(true);
-        try {
-            if (editingControl) {
-                await apiClient.updateDataControl(controlData);
-                toast.addToast('Controle atualizado com sucesso!', 'success');
-            } else {
-                await apiClient.createDataControl(controlData);
-                toast.addToast('Controle adicionado com sucesso!', 'success');
-            }
-            closeModal();
-            fetchControls();
-        } catch (error) {
-            toast.addToast('Falha ao salvar o controle.', 'error');
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const handleDelete = async (id) => {
-        if (window.confirm('Tem certeza que deseja excluir este controle de dados?')) {
-            try {
-                await apiClient.deleteDataControl(id);
-                toast.addToast('Controle excluído com sucesso!', 'success');
-                fetchControls();
-            } catch (error) {
-                toast.addToast('Falha ao excluir o controle.', 'error');
-            }
-        }
-    };
-
-    return (
-        <div className="p-6">
-            <h1 className="text-xl font-bold mb-6">Gerenciamento de Controles de Dados</h1>
-            <div className="flex justify-between items-center mb-4">
-                <div className="relative w-1/3">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" size={20} />
-                    <input type="text" placeholder="Buscar por nome ou descrição..."
-                        className="w-full bg-background border border-border-color rounded-lg py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                        value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-                </div>
-                <button onClick={() => openModal()} className="flex items-center gap-2 bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm">
-                    <Plus size={18} /> Adicionar Controle
-                </button>
-            </div>
-            {error && <div className="text-center text-danger p-4 bg-danger/10 rounded-lg">{error}</div>}
-            <DataControlTable controls={filteredControls} onEdit={openModal} onDelete={handleDelete} isLoading={isLoading} />
-            {isModalOpen && <DataControlModal control={editingControl} onSave={handleSave} onClose={closeModal} isSaving={isSaving} />}
-        </div>
-    );
-};
-
-
-// --- AI Analysis Page ---
-const AIAnalysisResult = ({ result, isFromCache }) => {
-    if (!result) return null;
-    return (
-        <Card className="mt-6 animate-fade-in">
-             <div className="flex justify-between items-center mb-4 border-b border-border-color pb-2">
-                <h3 className="text-lg font-bold">Resultado da Análise de IA</h3>
-                {isFromCache && <span className="text-xs bg-secondary/20 text-secondary py-1 px-2 rounded-md font-medium">Carregado do cache</span>}
-             </div>
-             <div className="space-y-4">
-                 <div>
-                    <h4 className="font-semibold text-primary text-base">Sumário Executivo</h4>
-                    <p className="text-text-secondary text-sm">{result.analysis_summary}</p>
-                 </div>
-                 <div>
-                    <h4 className="font-semibold text-primary text-base">Impacto Financeiro</h4>
-                    <p className="text-xl font-bold text-danger">{result.financial_impact.estimated_cost_range_brl}</p>
-                    <ul className="list-disc list-inside text-text-secondary text-xs">
-                        {result.financial_impact.cost_breakdown.map((item, i) => <li key={i}>{item}</li>)}
-                    </ul>
-                 </div>
-                 <div>
-                    <h4 className="font-semibold text-primary text-base">Impacto Operacional</h4>
-                    <p className="text-text-secondary text-sm">{result.operational_impact}</p>
-                 </div>
-                 <div>
-                    <h4 className="font-semibold text-primary text-base">Impacto Reputacional</h4>
-                    <p className="text-text-secondary text-sm">{result.reputational_impact}</p>
-                 </div>
-                 <div>
-                    <h4 className="font-semibold text-primary text-base">Impacto de Conformidade</h4>
-                    <p className="text-text-secondary text-sm">{result.compliance_impact}</p>
-                 </div>
-                 <div>
-                    <h4 className="font-semibold text-primary text-base">Recomendações</h4>
-                     <ul className="list-decimal list-inside text-text-secondary text-sm">
-                        {result.recommendations.map((item, i) => <li key={i}>{item}</li>)}
-                    </ul>
-                 </div>
-             </div>
-        </Card>
-    );
-};
-
-const AIAnalysisPage = ({ setActivePage, setHighlightedItem }) => {
-    const [risks, setRisks] = useState<Risk[] | null>(null);
-    const [assets, setAssets] = useState<Asset[] | null>(null);
-    const [isLoadingData, setIsLoadingData] = useState(true);
-    const [selectedType, setSelectedType] = useState('risk');
-    const [selectedId, setSelectedId] = useState('');
-    const [scenario, setScenario] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [analysisResult, setAnalysisResult] = useState(null);
+// --- AUTH AND INITIALIZATION FLOW ---
+const Login = () => {
+    const { login } = useAuth();
+    const { api, isDbReady } = useDb();
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
     const [error, setError] = useState('');
-    const [isFromCache, setIsFromCache] = useState(false);
-    const analysisCache = useRef(new Map());
-    const toast = useToast();
+    const [isLoading, setIsLoading] = useState(false);
 
-    useEffect(() => {
-        const fetchAnalysisData = async () => {
-            try {
-                setIsLoadingData(true);
-                const [fetchedRisks, fetchedAssets] = await Promise.all([
-                    apiClient.getRisks(),
-                    apiClient.getAssets()
-                ]);
-                setRisks(fetchedRisks);
-                setAssets(fetchedAssets);
-            } catch (err) {
-                 setError("Falha ao carregar dados para análise.");
-                 toast.addToast("Falha ao carregar dados para análise.", 'error');
-            } finally {
-                setIsLoadingData(false);
-            }
-        };
-        fetchAnalysisData();
-    }, [toast]);
-
-    const handleGoToItem = () => {
-        if (!selectedId) return;
-        const targetPage = selectedType === 'risk' ? 'Riscos' : 'Ativos';
-        setHighlightedItem({ page: targetPage, id: parseInt(selectedId) });
-        setActivePage(targetPage);
-    };
-
-    const handleAnalysis = async () => {
-        if (!selectedId || !scenario) {
-            setError('Por favor, selecione um item e descreva o cenário.');
+    const handleLogin = async (e) => {
+        e.preventDefault();
+        if (!isDbReady) {
+            setError('O banco de dados não está pronto. Verifique a configuração.');
             return;
         }
         setIsLoading(true);
         setError('');
-        setAnalysisResult(null);
-        setIsFromCache(false);
-
-        const cacheKey = `${selectedType}-${selectedId}-${scenario}`;
-        if (analysisCache.current.has(cacheKey)) {
-            setAnalysisResult(analysisCache.current.get(cacheKey));
-            setIsFromCache(true);
-            setIsLoading(false);
-            return;
-        }
-
-        const items = selectedType === 'risk' ? risks : assets;
-        const selectedItem = items?.find(r => r.id === parseInt(selectedId));
-
-        if (!selectedItem) {
-            setError('Item selecionado não encontrado.');
-            setIsLoading(false);
-            return;
-        }
         
-        let itemContext = '';
-        if (selectedType === 'risk') {
-            const risk = selectedItem as Risk;
-            itemContext = `
-                - Título do Risco: ${risk.title}
-                - Descrição: ${risk.description}
-                - Tipo: ${risk.type}
-                - Probabilidade: ${risk.probability}/5
-                - Impacto: ${risk.impact}/5
-            `;
-        } else {
-            const asset = selectedItem as Asset;
-            itemContext = `
-                - Nome do Ativo: ${asset.name}
-                - Tipo: ${asset.type}
-                - Criticidade: ${asset.criticality}
-                - Dono: ${asset.owner}
-            `;
-        }
-        
-        const prompt = `
-            Analise o seguinte cenário de risco para a empresa com base no item detalhado abaixo.
-
-            **Detalhes do Item:**
-            ${itemContext}
-
-            **Cenário a ser Analisado:**
-            ${scenario}
-        `;
-
-        const schema = {
-            type: Type.OBJECT,
-            properties: {
-                analysis_summary: { type: Type.STRING, description: 'Um resumo executivo do impacto geral.' },
-                financial_impact: {
-                  type: Type.OBJECT,
-                  properties: {
-                    estimated_cost_range_brl: { type: Type.STRING, description: 'Estimativa do prejuízo financeiro em BRL, ex: "R$ 100.000 - R$ 250.000".' },
-                    cost_breakdown: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Lista dos fatores do custo (ex: multas, perda de receita).' }
-                  }
-                },
-                reputational_impact: { type: Type.STRING, description: 'Descrição do dano à reputação da empresa.' },
-                operational_impact: { type: Type.STRING, description: 'Descrição da interrupção nas operações de negócio.' },
-                compliance_impact: { type: Type.STRING, description: 'Descrição de possíveis violações regulatórias (ex: LGPD).' },
-                recommendations: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Lista de 3 a 5 ações recomendadas para mitigar o risco.' }
-            }
-        };
-
         try {
-            const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
-                contents: prompt,
-                config: {
-                  responseMimeType: "application/json",
-                  responseSchema: schema,
-                  systemInstruction: "Você é um consultor sênior de GRC especializado em análise de impacto quantitativo. Forneça estimativas financeiras em Reais (BRL). Responda APENAS com o objeto JSON do schema fornecido."
-                },
-            });
-            const jsonStr = response.text.trim();
-            const result = JSON.parse(jsonStr);
-            analysisCache.current.set(cacheKey, result);
-            setAnalysisResult(result);
-        } catch (e) {
-            console.error("Gemini API error:", e);
-            setError("Falha ao obter análise da IA. Tente novamente.");
+            const user = await api.findUserByEmail(email);
+            // NOTE: In a real app, use a robust hashing library like bcrypt.
+            // This is a simplified check for demonstration.
+            if (user && user.passwordHash === password) {
+                login({ id: user.id, name: user.name, email: user.email, role: user.role });
+            } else {
+                setError('Email ou senha inválidos.');
+            }
+        } catch (err) {
+            console.error(err);
+            setError('Ocorreu um erro ao tentar fazer login.');
         } finally {
             setIsLoading(false);
         }
     };
-    
-    const options = selectedType === 'risk' ? risks : assets;
 
     return (
-        <div className="p-6">
-            <h1 className="text-xl font-bold mb-6">Análise de Impacto com IA</h1>
-            <Card>
-                <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                         <div>
-                             <label className="block text-xs font-medium mb-1">Tipo de Item</label>
-                             <select value={selectedType} onChange={e => { setSelectedType(e.target.value); setSelectedId(''); }}
-                                 className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm">
-                                 <option value="risk">Risco</option>
-                                 <option value="asset">Ativo</option>
-                             </select>
-                         </div>
-                         <div>
-                            <label className="block text-xs font-medium mb-1" htmlFor="item-selector">Selecione o Item</label>
-                            <div className="flex items-center gap-2">
-                                <select id="item-selector" value={selectedId} onChange={e => setSelectedId(e.target.value)}
-                                    className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                                    disabled={isLoadingData}>
-                                    <option value="">{isLoadingData ? 'Carregando...' : '-- Selecione --'}</option>
-                                    {options?.map(item => <option key={item.id} value={item.id}>{item.name || item.title}</option>)}
-                                </select>
-                                <button
-                                    onClick={handleGoToItem}
-                                    disabled={!selectedId}
-                                    className="p-2 bg-surface hover:bg-surface/80 text-text-secondary hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 rounded-lg"
-                                    title="Navegar para o item"
-                                >
-                                    <ExternalLink size={20} />
-                                </button>
-                            </div>
-                         </div>
+        <div className="flex items-center justify-center min-h-screen bg-background">
+            <div className="w-full max-w-md p-8 space-y-6 bg-surface rounded-lg shadow-lg border border-border-color">
+                <h1 className="text-3xl font-bold text-center text-primary">EXA GRC</h1>
+                <h2 className="text-xl font-semibold text-center text-text-primary">Login</h2>
+                <form className="space-y-6" onSubmit={handleLogin}>
+                    <div>
+                        <label className="text-sm font-bold text-gray-400 block">Email</label>
+                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="w-full p-2 mt-1 text-gray-300 bg-background border border-border-color rounded-md focus:outline-none focus:ring-2 focus:ring-primary" />
                     </div>
                     <div>
-                        <label className="block text-xs font-medium mb-1">Descreva o Cenário</label>
-                        <textarea value={scenario} onChange={e => setScenario(e.target.value)}
-                            placeholder="Ex: Vazamento completo da base de dados de clientes devido a um ataque de ransomware."
-                            rows="4" className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm"></textarea>
+                        <label className="text-sm font-bold text-gray-400 block">Senha</label>
+                        <input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="w-full p-2 mt-1 text-gray-300 bg-background border border-border-color rounded-md focus:outline-none focus:ring-2 focus:ring-primary" />
                     </div>
-                    {error && <p className="text-sm text-danger">{error}</p>}
-                    <div>
-                        <button onClick={handleAnalysis} disabled={isLoading || isLoadingData}
-                            className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary/80 text-white font-semibold py-3 px-4 rounded-lg transition-colors disabled:bg-primary/50 disabled:cursor-not-allowed text-sm">
-                            {isLoading ? <> <RefreshCw className="animate-spin" size={18} /> Analisando... </> : <> <Bot size={18} /> Analisar com IA </>}
-                        </button>
-                    </div>
-                </div>
-            </Card>
-            {analysisResult && <AIAnalysisResult result={analysisResult} isFromCache={isFromCache} />}
-        </div>
-    );
-};
-
-
-// --- Settings Page ---
-
-const AuthenticationSettingsTab = ({ ssoConfig, setSsoConfig }) => {
-    const handleGoogleChange = e => {
-        const { name, value, type, checked } = e.target;
-        setSsoConfig(prev => ({
-            ...prev,
-            google: { ...prev.google, [name]: type === 'checkbox' ? checked : value }
-        }));
-    };
-
-    const handleJumpCloudChange = e => {
-        const { name, value, type, checked } = e.target;
-        setSsoConfig(prev => ({
-            ...prev,
-            jumpcloud: { ...prev.jumpcloud, [name]: type === 'checkbox' ? checked : value }
-        }));
-    };
-
-    const handleSave = (provider) => {
-        // In a real app, this would make an API call. Here we just show a confirmation.
-        alert(`Configurações de ${provider} salvas com sucesso!`);
-    };
-
-    return (
-        <div className="max-w-4xl mx-auto space-y-8">
-            <Card>
-                <div className="flex justify-between items-start mb-4">
-                    <div>
-                        <h3 className="text-base font-semibold mb-1">Google Workspace SSO</h3>
-                        <p className="text-xs text-text-secondary">Configure o login social com o Google para os usuários do seu domínio.</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <label htmlFor="google-enabled" className={`text-xs font-medium ${ssoConfig.google.enabled ? 'text-green-400' : 'text-text-secondary'}`}>
-                            {ssoConfig.google.enabled ? 'Habilitado' : 'Desabilitado'}
-                        </label>
-                        <div className="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" id="google-enabled" name="enabled" checked={ssoConfig.google.enabled} onChange={handleGoogleChange} className="sr-only peer" />
-                            <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-focus:ring-2 peer-focus:ring-primary peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                        </div>
-                    </div>
-                </div>
-                <div className="space-y-4 pt-4 border-t border-border-color">
-                     <div>
-                        <label className="block text-xs font-medium mb-1">Client ID</label>
-                        <input type="text" name="clientId" placeholder="Seu Client ID do Google" value={ssoConfig.google.clientId} onChange={handleGoogleChange} className="w-full bg-background border border-border-color rounded-lg p-2 text-sm" />
-                    </div>
-                     <div>
-                        <label className="block text-xs font-medium mb-1">Client Secret</label>
-                        <input type="password" name="clientSecret" placeholder="******************" value={ssoConfig.google.clientSecret} onChange={handleGoogleChange} className="w-full bg-background border border-border-color rounded-lg p-2 text-sm" />
-                    </div>
-                     <div>
-                        <label className="block text-xs font-medium mb-1">Redirect URI (Callback URL)</label>
-                        <input type="text" readOnly value="https://grc.exa.com.br/auth/google/callback" className="w-full bg-background/50 border border-border-color rounded-lg p-2 text-sm text-text-secondary" />
-                    </div>
-                    <div className="flex justify-end">
-                        <button onClick={() => handleSave('Google Workspace')} className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm">Salvar</button>
-                    </div>
-                </div>
-            </Card>
-
-            <Card>
-                <div className="flex justify-between items-start mb-4">
-                    <div>
-                        <h3 className="text-base font-semibold mb-1">JumpCloud SAML SSO</h3>
-                        <p className="text-xs text-text-secondary">Configure a autenticação via SAML com o JumpCloud.</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <label htmlFor="jumpcloud-enabled" className={`text-xs font-medium ${ssoConfig.jumpcloud.enabled ? 'text-green-400' : 'text-text-secondary'}`}>
-                            {ssoConfig.jumpcloud.enabled ? 'Habilitado' : 'Desabilitado'}
-                        </label>
-                        <div className="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" id="jumpcloud-enabled" name="enabled" checked={ssoConfig.jumpcloud.enabled} onChange={handleJumpCloudChange} className="sr-only peer" />
-                            <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-focus:ring-2 peer-focus:ring-primary peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                        </div>
-                    </div>
-                </div>
-                <div className="space-y-4 pt-4 border-t border-border-color">
-                     <div>
-                        <label className="block text-xs font-medium mb-1">SSO URL (Identity Provider Single Sign-On URL)</label>
-                        <input type="url" name="ssoUrl" placeholder="https://sso.jumpcloud.com/saml2/..." value={ssoConfig.jumpcloud.ssoUrl} onChange={handleJumpCloudChange} className="w-full bg-background border border-border-color rounded-lg p-2 text-sm" />
-                    </div>
-                     <div>
-                        <label className="block text-xs font-medium mb-1">Entity ID (Identity Provider Issuer)</label>
-                        <input type="text" name="entityId" placeholder="urn:sso.jumpcloud.com:..." value={ssoConfig.jumpcloud.entityId} onChange={handleJumpCloudChange} className="w-full bg-background border border-border-color rounded-lg p-2 text-sm" />
-                    </div>
-                     <div>
-                        <label className="block text-xs font-medium mb-1">Certificado Público (x.509)</label>
-                        <textarea name="certificate" rows="5" placeholder="Cole o certificado x.509 aqui..." value={ssoConfig.jumpcloud.certificate} onChange={handleJumpCloudChange} className="w-full bg-background border border-border-color rounded-lg p-2 text-sm font-mono"></textarea>
-                    </div>
-                    <div className="flex justify-end">
-                         <button onClick={() => handleSave('JumpCloud')} className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm">Salvar</button>
-                    </div>
-                </div>
-            </Card>
-        </div>
-    );
-};
-
-
-const SettingsPage = ({ users, setUsers, profiles, setProfiles, groups, setGroups, alertRules, setAlertRules, ssoConfig, setSsoConfig }) => {
-    const [activeTab, setActiveTab] = useState('Perfis');
-    
-    const renderTabContent = () => {
-        switch (activeTab) {
-            case 'Perfis':
-                return <ProfileManagementTab profiles={profiles} setProfiles={setProfiles} />;
-            case 'Grupos':
-                return <GroupManagementTab groups={groups} setGroups={setGroups} allUsers={users} />;
-            case 'Usuários':
-                return <UserManagementTab users={users} setUsers={setUsers} allProfiles={profiles} />;
-            case 'Dados':
-                return <DataManagementTab />;
-            case 'Alertas':
-                return <AlertManagementTab alertRules={alertRules} setAlertRules={setAlertRules} allUsers={users} allGroups={groups} />;
-            case 'Notificações':
-                return <NotificationSettingsTab />;
-            case 'Autenticação':
-                return <AuthenticationSettingsTab ssoConfig={ssoConfig} setSsoConfig={setSsoConfig} />;
-            default:
-                return null;
-        }
-    };
-
-    return (
-        <div className="p-6">
-            <h1 className="text-xl font-bold mb-6">Configurações</h1>
-            <div className="flex border-b border-border-color mb-6 overflow-x-auto">
-                <TabButton text="Perfis" icon={UserCheck} active={activeTab === 'Perfis'} onClick={() => setActiveTab('Perfis')} />
-                <TabButton text="Grupos" icon={Users2} active={activeTab === 'Grupos'} onClick={() => setActiveTab('Grupos')} />
-                <TabButton text="Usuários" icon={Users} active={activeTab === 'Usuários'} onClick={() => setActiveTab('Usuários')} />
-                <TabButton text="Autenticação" icon={KeyRound} active={activeTab === 'Autenticação'} onClick={() => setActiveTab('Autenticação')} />
-                <TabButton text="Alertas" icon={Bell} active={activeTab === 'Alertas'} onClick={() => setActiveTab('Alertas')} />
-                <TabButton text="Notificações" icon={Mail} active={activeTab === 'Notificações'} onClick={() => setActiveTab('Notificações')} />
-                <TabButton text="Dados" icon={DatabaseZap} active={activeTab === 'Dados'} onClick={() => setActiveTab('Dados')} />
-            </div>
-            <div>{renderTabContent()}</div>
-        </div>
-    );
-};
-
-const TabButton = ({ text, icon: Icon, active, onClick }) => (
-    <button onClick={onClick} className={`flex items-center gap-2 py-2 px-4 -mb-px border-b-2 transition-colors whitespace-nowrap ${active ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-primary'}`}>
-        <Icon size={18} />
-        <span className="font-semibold text-sm">{text}</span>
-    </button>
-);
-
-// User Management
-const UserManagementTab = ({ users, setUsers, allProfiles }) => {
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingUser, setEditingUser] = useState(null);
-
-    const openModal = (user = null) => { setEditingUser(user); setIsModalOpen(true); };
-    const closeModal = () => setIsModalOpen(false);
-
-    const handleSave = (userData) => {
-        if (editingUser) {
-            setUsers(users.map(u => u.id === userData.id ? { ...userData, profileId: Number(userData.profileId) } : u));
-        } else {
-            setUsers([...users, { ...userData, id: Date.now(), profileId: Number(userData.profileId) }]);
-        }
-        closeModal();
-    };
-    
-    const handleDelete = (userId) => {
-        if (window.confirm('Tem certeza?')) setUsers(users.filter(u => u.id !== userId));
-    };
-    
-    return (
-        <div>
-            <div className="flex justify-end mb-4">
-                 <button onClick={() => openModal()} className="flex items-center gap-2 bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm"><UserPlus size={18} />Adicionar Usuário</button>
-            </div>
-            <UserTable users={users} profiles={allProfiles} onEdit={openModal} onDelete={handleDelete} />
-            {isModalOpen && <UserModal user={editingUser} profiles={allProfiles} onSave={handleSave} onClose={closeModal} />}
-        </div>
-    );
-};
-const UserTable = ({ users, profiles, onEdit, onDelete }) => (
-    <div className="bg-surface rounded-lg overflow-hidden">
-        <table className="w-full text-left">
-            <thead className="bg-surface/50"><tr><th className="p-4 font-semibold text-sm">Nome</th><th className="p-4 font-semibold text-sm">Email</th><th className="p-4 font-semibold text-sm">Perfil</th><th className="p-4 font-semibold text-sm">Ações</th></tr></thead>
-            <tbody className="text-sm">
-                {users.map(user => {
-                    const profile = profiles.find(p => p.id === user.profileId);
-                    return (
-                        <tr key={user.id} className="border-t border-border-color hover:bg-surface/50">
-                            <td className="p-4 flex items-center gap-3"><div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center font-bold text-background text-sm">{user.name.charAt(0)}</div>{user.name}</td>
-                            <td className="p-4 text-text-secondary">{user.email}</td>
-                            <td className="p-4">{profile ? profile.name : 'N/A'}</td>
-                            <td className="p-4"><div className="flex gap-2"><button onClick={() => onEdit(user)} className="text-text-secondary hover:text-primary"><Edit size={18} /></button><button onClick={() => onDelete(user.id)} className="text-text-secondary hover:text-danger"><Trash2 size={18} /></button></div></td>
-                        </tr>
-                    )
-                })}
-            </tbody>
-        </table>
-    </div>
-);
-const UserModal = ({ user, profiles, onSave, onClose }) => {
-    const [formData, setFormData] = useState(user || { name: '', email: '', profileId: profiles[0]?.id || '' });
-    const handleChange = e => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    const handleSubmit = e => { e.preventDefault(); onSave(formData); };
-    return (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-            <div className="bg-surface rounded-lg p-8 w-full max-w-lg" onClick={e => e.stopPropagation()}>
-                <h2 className="text-lg font-bold mb-6">{user ? 'Editar Usuário' : 'Adicionar Usuário'}</h2>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div><label className="block text-xs font-medium mb-1">Nome <span className="text-danger">*</span></label><input type="text" name="name" value={formData.name} onChange={handleChange} required className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" /></div>
-                    <div><label className="block text-xs font-medium mb-1">Email <span className="text-danger">*</span></label><input type="email" name="email" value={formData.email} onChange={handleChange} required className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" /></div>
-                    <div><label className="block text-xs font-medium mb-1">Perfil</label><select name="profileId" value={formData.profileId} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm">{profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-                    <div className="flex justify-end gap-4 pt-4"><button type="button" onClick={onClose} className="bg-surface/50 hover:bg-surface/80 font-semibold py-2 px-4 rounded-lg text-sm">Cancelar</button><button type="submit" className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm">Salvar</button></div>
+                    {error && <p className="text-sm text-center text-danger">{error}</p>}
+                    <button type="submit" disabled={isLoading} className="w-full py-2 px-4 bg-primary text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50">
+                        {isLoading ? <Spinner /> : 'Entrar'}
+                    </button>
                 </form>
             </div>
         </div>
     );
 };
 
-// Group Management
-const GroupManagementTab = ({ groups, setGroups, allUsers }) => {
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingGroup, setEditingGroup] = useState(null);
-
-    const openModal = (group = null) => { setEditingGroup(group); setIsModalOpen(true); };
-    const closeModal = () => setIsModalOpen(false);
-
-    const handleSave = (groupData) => {
-        if (editingGroup) {
-            setGroups(groups.map(g => g.id === groupData.id ? groupData : g));
-        } else {
-            setGroups([...groups, { ...groupData, id: Date.now() }]);
-        }
-        closeModal();
-    };
-
-    const handleDelete = (groupId) => {
-        if (window.confirm('Tem certeza?')) setGroups(groups.filter(g => g.id !== groupId));
-    };
-
-    return (
-        <div>
-            <div className="flex justify-end mb-4"><button onClick={() => openModal()} className="flex items-center gap-2 bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm"><Plus size={18} />Adicionar Grupo</button></div>
-            <GroupTable groups={groups} allUsers={allUsers} onEdit={openModal} onDelete={handleDelete} />
-            {isModalOpen && <GroupModal group={editingGroup} allUsers={allUsers} onSave={handleSave} onClose={closeModal} />}
-        </div>
-    );
-};
-const GroupTable = ({ groups, allUsers, onEdit, onDelete }) => (
-     <div className="bg-surface rounded-lg overflow-hidden">
-        <table className="w-full text-left">
-            <thead className="bg-surface/50"><tr><th className="p-4 font-semibold text-sm">Nome</th><th className="p-4 font-semibold text-sm">Membros</th><th className="p-4 font-semibold text-sm">Ações</th></tr></thead>
-            <tbody className="text-sm">
-                {groups.map(group => (
-                    <tr key={group.id} className="border-t border-border-color hover:bg-surface/50">
-                        <td className="p-4"><p className="font-semibold">{group.name}</p><p className="text-xs text-text-secondary">{group.description}</p></td>
-                        <td className="p-4">{group.memberIds.length}</td>
-                        <td className="p-4"><div className="flex gap-2"><button onClick={() => onEdit(group)} className="text-text-secondary hover:text-primary"><Edit size={18} /></button><button onClick={() => onDelete(group.id)} className="text-text-secondary hover:text-danger"><Trash2 size={18} /></button></div></td>
-                    </tr>
-                ))}
-            </tbody>
-        </table>
-    </div>
-);
-const GroupModal = ({ group, allUsers, onSave, onClose }) => {
-    const [formData, setFormData] = useState(group || { name: '', description: '', memberIds: [] });
-    
-    const handleChange = e => setFormData(prev => ({...prev, [e.target.name]: e.target.value }));
-    const handleMemberChange = (userId) => {
-        setFormData(prev => {
-            const newMemberIds = prev.memberIds.includes(userId)
-                ? prev.memberIds.filter(id => id !== userId)
-                : [...prev.memberIds, userId];
-            return { ...prev, memberIds: newMemberIds };
-        });
-    };
-    
-    const handleSubmit = e => { e.preventDefault(); onSave(formData); };
-
-    return (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-            <div className="bg-surface rounded-lg p-8 w-full max-w-2xl" onClick={e => e.stopPropagation()}>
-                <h2 className="text-lg font-bold mb-6">{group ? 'Editar Grupo' : 'Adicionar Grupo'}</h2>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div><label className="block text-xs font-medium mb-1">Nome</label><input type="text" name="name" value={formData.name} onChange={handleChange} required className="w-full bg-background border border-border-color rounded-lg p-2 text-sm"/></div>
-                    <div><label className="block text-xs font-medium mb-1">Descrição</label><input type="text" name="description" value={formData.description} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 text-sm"/></div>
-                    <div>
-                        <label className="block text-xs font-medium mb-1">Membros</label>
-                        <div className="max-h-48 overflow-y-auto bg-background p-2 rounded-lg border border-border-color text-sm">
-                            {allUsers.map(user => (
-                                <div key={user.id} className="flex items-center gap-2 p-1">
-                                    <input type="checkbox" id={`user-${user.id}`} checked={formData.memberIds.includes(user.id)} onChange={() => handleMemberChange(user.id)} />
-                                    <label htmlFor={`user-${user.id}`}>{user.name}</label>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                    <div className="flex justify-end gap-4 pt-4"><button type="button" onClick={onClose} className="bg-surface/50 hover:bg-surface/80 font-semibold py-2 px-4 rounded-lg text-sm">Cancelar</button><button type="submit" className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm">Salvar</button></div>
-                </form>
-            </div>
-        </div>
-    );
-};
-
-// Profile Management
-const ProfileManagementTab = ({ profiles, setProfiles }) => {
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingProfile, setEditingProfile] = useState(null);
-
-    const openModal = (profile = null) => { setEditingProfile(profile); setIsModalOpen(true); };
-    const closeModal = () => setIsModalOpen(false);
-
-    const handleSave = (profileData) => {
-        if (editingProfile) {
-            setProfiles(profiles.map(p => p.id === profileData.id ? profileData : p));
-        } else {
-            setProfiles([...profiles, { ...profileData, id: Date.now() }]);
-        }
-        closeModal();
-    };
-    
-    const handleDelete = (profileId) => {
-        if (window.confirm('Tem certeza?')) setProfiles(profiles.filter(p => p.id !== profileId));
-    };
-
-    return (
-         <div>
-            <div className="flex justify-end mb-4"><button onClick={() => openModal()} className="flex items-center gap-2 bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm"><Plus size={18} />Adicionar Perfil</button></div>
-            <ProfileTable profiles={profiles} onEdit={openModal} onDelete={handleDelete} />
-            {isModalOpen && <ProfileModal profile={editingProfile} onSave={handleSave} onClose={closeModal} />}
-        </div>
-    );
-};
-const ProfileTable = ({ profiles, onEdit, onDelete }) => (
-    <div className="bg-surface rounded-lg overflow-hidden">
-        <table className="w-full text-left">
-            <thead className="bg-surface/50"><tr><th className="p-4 font-semibold text-sm">Nome</th><th className="p-4 font-semibold text-sm">Permissões</th><th className="p-4 font-semibold text-sm">Ações</th></tr></thead>
-            <tbody className="text-sm">
-                {profiles.map(profile => (
-                    <tr key={profile.id} className="border-t border-border-color hover:bg-surface/50">
-                        <td className="p-4"><p className="font-semibold">{profile.name}</p><p className="text-xs text-text-secondary">{profile.description}</p></td>
-                        <td className="p-4 text-xs font-mono">{profile.permissions.join(', ')}</td>
-                        <td className="p-4"><div className="flex gap-2"><button onClick={() => onEdit(profile)} className="text-text-secondary hover:text-primary"><Edit size={18} /></button><button onClick={() => onDelete(profile.id)} className="text-text-secondary hover:text-danger"><Trash2 size={18} /></button></div></td>
-                    </tr>
-                ))}
-            </tbody>
-        </table>
-    </div>
-);
-const ProfileModal = ({ profile, onSave, onClose }) => {
-    const [formData, setFormData] = useState(profile || { name: '', description: '', permissions: [] });
-    const handleChange = e => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    const handleSubmit = e => { e.preventDefault(); onSave(formData); };
-    return (
-         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-            <div className="bg-surface rounded-lg p-8 w-full max-w-lg" onClick={e => e.stopPropagation()}>
-                <h2 className="text-lg font-bold mb-6">{profile ? 'Editar Perfil' : 'Adicionar Perfil'}</h2>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div><label className="block text-xs font-medium mb-1">Nome</label><input type="text" name="name" value={formData.name} onChange={handleChange} required className="w-full bg-background border border-border-color rounded-lg p-2 text-sm" /></div>
-                    <div><label className="block text-xs font-medium mb-1">Descrição</label><input type="text" name="description" value={formData.description} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 text-sm" /></div>
-                    <div><label className="block text-xs font-medium mb-1">Permissões (separadas por vírgula)</label><input type="text" name="permissions" value={formData.permissions.join(',')} onChange={e => setFormData(p => ({...p, permissions: e.target.value.split(',').map(i=>i.trim())}))} className="w-full bg-background border border-border-color rounded-lg p-2 font-mono text-sm" /></div>
-                    <p className="text-xs text-text-secondary">Ex: risk:read, risk:edit, asset:*, *:*. (Funcionalidade de permissões ainda em desenvolvimento).</p>
-                    <div className="flex justify-end gap-4 pt-4"><button type="button" onClick={onClose} className="bg-surface/50 hover:bg-surface/80 font-semibold py-2 px-4 rounded-lg text-sm">Cancelar</button><button type="submit" className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm">Salvar</button></div>
-                </form>
-            </div>
-        </div>
-    );
-};
-
-const DataManagementTab = () => {
-    const toast = useToast();
-    
-    const exportToCSV = async (dataType, filename) => {
-        let data;
-        try {
-            switch(dataType) {
-                case 'risks': data = await apiClient.getRisks(); break;
-                case 'assets': data = await apiClient.getAssets(); break;
-                case 'obsolescenceItems': data = await apiClient.getObsolescenceItems(); break;
-                default:
-                    toast.addToast(`Tipo de dado inválido para exportação.`, 'error');
-                    return;
-            }
-        } catch (e) {
-            toast.addToast(`Falha ao buscar dados de ${filename} para exportação.`, 'error');
-            return;
-        }
-
-        if (!data || data.length === 0) {
-             toast.addToast(`Não há dados de ${filename} para exportar.`, 'error');
-             return;
-        }
-        const headers = Object.keys(data[0]);
-        const csvRows = [headers.join(','), ...data.map(row => headers.map(fieldName => JSON.stringify(row[fieldName])).join(','))];
-        const link = document.createElement("a");
-        link.setAttribute("href", encodeURI("data:text/csv;charset=utf-8," + csvRows.join("\n")));
-        link.setAttribute("download", `${filename}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-
-    const handleReset = async () => {
-        if (prompt('Ação irreversível. Isso irá resetar TODOS os dados da aplicação. Digite "RESETAR TUDO" para confirmar.') === 'RESETAR TUDO') {
-            try {
-                await apiClient.resetData();
-                toast.addToast('Todos os dados foram resetados. Recarregue a página para ver as mudanças.', 'success');
-            } catch {
-                toast.addToast('Falha ao resetar os dados.', 'error');
-            }
-        } else {
-            toast.addToast('Ação cancelada.', 'error');
-        }
-    };
-    
-    return (
-        <div className="space-y-6 max-w-2xl mx-auto">
-             <Card>
-                <h3 className="text-base font-semibold mb-4 border-b border-border-color pb-2">Exportar Dados</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <button onClick={() => exportToCSV('risks', 'export_riscos')} className="flex w-full items-center justify-center gap-2 bg-surface hover:bg-surface/80 text-text-primary font-semibold py-2 px-4 rounded-lg text-sm"><FileDown size={18} /> Exportar Riscos</button>
-                    <button onClick={() => exportToCSV('assets', 'export_ativos')} className="flex w-full items-center justify-center gap-2 bg-surface hover:bg-surface/80 text-text-primary font-semibold py-2 px-4 rounded-lg text-sm"><FileDown size={18} /> Exportar Ativos</button>
-                    <button onClick={() => exportToCSV('obsolescenceItems', 'export_obsolescencia')} className="flex w-full items-center justify-center gap-2 bg-surface hover:bg-surface/80 text-text-primary font-semibold py-2 px-4 rounded-lg text-sm"><FileDown size={18} /> Exportar Obsolescência</button>
-                </div>
-            </Card>
-            <Card className="border border-danger/50">
-                 <h3 className="text-base font-semibold mb-2 text-danger">Zona de Perigo</h3>
-                 <p className="text-xs text-text-secondary mb-4">Ações nesta seção são permanentes e afetam todos os dados simulados no backend.</p>
-                 <div className="flex justify-between items-center bg-background/50 p-4 rounded-lg">
-                     <div><p className="font-semibold text-sm">Resetar Todos os Dados</p><p className="text-xs text-text-secondary">Restaura todos os dados da aplicação para o estado inicial.</p></div>
-                     <button onClick={handleReset} className="flex items-center gap-2 bg-danger hover:bg-danger/80 text-white font-bold py-2 px-4 rounded-lg text-sm"><RefreshCw size={18} /> Resetar</button>
-                 </div>
-            </Card>
-        </div>
-    );
-};
-
-// Alert Management
-const AlertRuleModal = ({ rule, allUsers, allGroups, onSave, onClose }) => {
-    const [formData, setFormData] = useState(
-        rule || {
-            name: '', isActive: true, triggerEvent: Object.values(AlertTriggerEvent)[0],
-            notifications: { inApp: true, email: false },
-            recipients: { userIds: [], groupIds: [] }
-        }
-    );
-
-    const handleChange = (e) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    const handleCheckboxChange = (e) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.checked }));
-    const handleNotificationChange = (e) => {
-        const { name, checked } = e.target;
-        setFormData(prev => ({ ...prev, notifications: { ...prev.notifications, [name]: checked }}));
-    };
-    const handleRecipientChange = (type, id) => {
-        setFormData(prev => {
-            const currentIds = prev.recipients[type];
-            const newIds = currentIds.includes(id) ? currentIds.filter(i => i !== id) : [...currentIds, id];
-            return { ...prev, recipients: { ...prev.recipients, [type]: newIds }};
-        });
-    };
-    const handleSubmit = (e) => { e.preventDefault(); onSave(formData); };
-
-    return (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-            <div className="bg-surface rounded-lg p-8 w-full max-w-3xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                <h2 className="text-lg font-bold mb-6 flex-shrink-0">{rule ? 'Editar Regra de Alerta' : 'Adicionar Nova Regra de Alerta'}</h2>
-                <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto pr-4">
-                    <div className="flex items-center justify-between bg-background/50 p-3 rounded-lg">
-                        <label htmlFor="isActive" className="text-sm font-medium">Regra Ativa</label>
-                        <div className="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" id="isActive" name="isActive" checked={formData.isActive} onChange={handleCheckboxChange} className="sr-only peer" />
-                            <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-focus:ring-2 peer-focus:ring-primary peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium mb-1">Nome da Regra</label>
-                        <input type="text" name="name" value={formData.name} onChange={handleChange} required className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
-                    </div>
-                     <div>
-                        <label className="block text-xs font-medium mb-1">Gatilho (Quando este evento ocorrer...)</label>
-                        <select name="triggerEvent" value={formData.triggerEvent} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm">
-                            {Object.values(AlertTriggerEvent).map(event => <option key={event} value={event}>{event}</option>)}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium mb-1">...notificar por:</label>
-                        <div className="flex gap-4 p-3 bg-background/50 rounded-lg">
-                            <div className="flex items-center gap-2"><input type="checkbox" id="inApp" name="inApp" checked={formData.notifications.inApp} onChange={handleNotificationChange} /><label htmlFor="inApp" className="text-sm">Notificação In-App</label></div>
-                            <div className="flex items-center gap-2"><input type="checkbox" id="email" name="email" checked={formData.notifications.email} onChange={handleNotificationChange} /><label htmlFor="email" className="text-sm">Email</label></div>
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium mb-1">...os seguintes destinatários:</label>
-                        <div className="grid grid-cols-2 gap-4 max-h-56 overflow-y-auto bg-background/50 p-3 rounded-lg border border-border-color">
-                            <div>
-                                <h4 className="font-semibold text-sm mb-2">Grupos</h4>
-                                {allGroups.map(group => (
-                                    <div key={group.id} className="flex items-center gap-2 p-1 text-sm"><input type="checkbox" id={`group-${group.id}`} checked={formData.recipients.groupIds.includes(group.id)} onChange={() => handleRecipientChange('groupIds', group.id)} /><label htmlFor={`group-${group.id}`}>{group.name}</label></div>
-                                ))}
-                            </div>
-                            <div>
-                                <h4 className="font-semibold text-sm mb-2">Usuários</h4>
-                                {allUsers.map(user => (
-                                    <div key={user.id} className="flex items-center gap-2 p-1 text-sm"><input type="checkbox" id={`user-${user.id}`} checked={formData.recipients.userIds.includes(user.id)} onChange={() => handleRecipientChange('userIds', user.id)} /><label htmlFor={`user-${user.id}`}>{user.name}</label></div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                    <div className="flex justify-end gap-4 pt-4 flex-shrink-0">
-                        <button type="button" onClick={onClose} className="bg-surface/50 hover:bg-surface/80 font-semibold py-2 px-4 rounded-lg text-sm">Cancelar</button>
-                        <button type="submit" className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm">Salvar Regra</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-};
-
-const AlertRuleTable = ({ rules, onEdit, onDelete, onToggle }) => (
-    <div className="bg-surface rounded-lg overflow-hidden">
-        <table className="w-full text-left">
-            <thead className="bg-surface/50"><tr><th className="p-4 font-semibold text-sm">Status</th><th className="p-4 font-semibold text-sm">Nome da Regra</th><th className="p-4 font-semibold text-sm">Gatilho</th><th className="p-4 font-semibold text-sm">Canais</th><th className="p-4 font-semibold text-sm">Destinatários</th><th className="p-4 font-semibold text-sm text-center">Ações</th></tr></thead>
-            <tbody className="text-sm">
-                {rules.map(rule => (
-                    <tr key={rule.id} className="border-t border-border-color hover:bg-surface/50">
-                        <td className="p-4">
-                            <div className="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" checked={rule.isActive} onChange={() => onToggle(rule.id, !rule.isActive)} className="sr-only peer" />
-                                <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                            </div>
-                        </td>
-                        <td className="p-4 font-semibold">{rule.name}</td>
-                        <td className="p-4 text-text-secondary">{rule.triggerEvent}</td>
-                        <td className="p-4">
-                            <div className="flex gap-3">
-                                {rule.notifications.inApp && <Bell size={16} title="Notificação In-App" />}
-                                {rule.notifications.email && <Mail size={16} title="Email" />}
-                            </div>
-                        </td>
-                        <td className="p-4 text-text-secondary">{`${rule.recipients.groupIds.length} Grupos, ${rule.recipients.userIds.length} Usuários`}</td>
-                        <td className="p-4"><div className="flex gap-2 justify-center"><button onClick={() => onEdit(rule)} className="text-text-secondary hover:text-primary p-1"><Edit size={16} /></button><button onClick={() => onDelete(rule.id)} className="text-text-secondary hover:text-danger p-1"><Trash2 size={16} /></button></div></td>
-                    </tr>
-                ))}
-            </tbody>
-        </table>
-    </div>
-);
-
-const AlertManagementTab = ({ alertRules, setAlertRules, allUsers, allGroups }) => {
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingRule, setEditingRule] = useState(null);
-
-    const openModal = (rule = null) => { setEditingRule(rule); setIsModalOpen(true); };
-    const closeModal = () => setIsModalOpen(false);
-
-    const handleSave = (ruleData) => {
-        if (editingRule) {
-            setAlertRules(alertRules.map(r => r.id === ruleData.id ? ruleData : r));
-        } else {
-            setAlertRules([...alertRules, { ...ruleData, id: Date.now() }]);
-        }
-        closeModal();
-    };
-
-    const handleDelete = (ruleId) => {
-        if (window.confirm('Tem certeza que deseja excluir esta regra de alerta?')) {
-            setAlertRules(alertRules.filter(r => r.id !== ruleId));
-        }
-    };
-    
-    const handleToggle = (ruleId, isActive) => {
-        setAlertRules(alertRules.map(r => r.id === ruleId ? { ...r, isActive } : r));
-    };
-
-    return (
-        <div>
-            <div className="flex justify-end mb-4">
-                <button onClick={() => openModal()} className="flex items-center gap-2 bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm"><Plus size={18} />Adicionar Regra</button>
-            </div>
-            <AlertRuleTable rules={alertRules} onEdit={openModal} onDelete={handleDelete} onToggle={handleToggle} />
-            {isModalOpen && <AlertRuleModal rule={editingRule} allUsers={allUsers} allGroups={allGroups} onSave={handleSave} onClose={closeModal} />}
-        </div>
-    );
-};
-
-const NotificationSettingsTab = () => {
-    const [config, setConfig] = useState({
-        awsRegion: '', awsAccessKey: '', awsSecretKey: '', fromEmail: ''
-    });
-    const [testStatus, setTestStatus] = useState(null); // 'success', 'error', or null
-    const [isTesting, setIsTesting] = useState(false);
-
-    const handleChange = e => setConfig(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    
-    const handleTestConnection = () => {
-        setIsTesting(true);
-        setTestStatus(null);
-        // Simulate API call to backend
-        setTimeout(() => {
-            if (config.awsRegion && config.awsAccessKey && config.awsSecretKey && config.fromEmail) {
-                setTestStatus('success');
-            } else {
-                setTestStatus('error');
-            }
-            setIsTesting(false);
-        }, 1500);
-    };
-
-    return (
-        <div className="max-w-2xl mx-auto space-y-6">
-            <Card>
-                <h3 className="text-base font-semibold mb-1">Configuração de Envio de E-mail</h3>
-                <p className="text-xs text-text-secondary mb-4">Configure as credenciais do AWS Simple Email Service (SES) para notificações.</p>
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-xs font-medium mb-1">Região da AWS</label>
-                        <input type="text" name="awsRegion" placeholder="us-east-1" value={config.awsRegion} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 text-sm" />
-                    </div>
-                     <div>
-                        <label className="block text-xs font-medium mb-1">Access Key ID</label>
-                        <input type="text" name="awsAccessKey" placeholder="AKIAIOSFODNN7EXAMPLE" value={config.awsAccessKey} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 text-sm" />
-                    </div>
-                     <div>
-                        <label className="block text-xs font-medium mb-1">Secret Access Key</label>
-                        <input type="password" name="awsSecretKey" placeholder="****************************************" value={config.awsSecretKey} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 text-sm" />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium mb-1">E-mail Remetente</label>
-                        <input type="email" name="fromEmail" placeholder="noreply@suaempresa.com" value={config.fromEmail} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 text-sm" />
-                    </div>
-                    <div className="flex justify-end gap-4 items-center">
-                         {testStatus === 'success' && <p className="text-sm text-green-400">Conexão bem-sucedida!</p>}
-                         {testStatus === 'error' && <p className="text-sm text-danger">Falha na conexão. Verifique os dados.</p>}
-                        <button onClick={handleTestConnection} disabled={isTesting} className="flex items-center justify-center gap-2 bg-surface hover:bg-surface/80 text-text-primary font-semibold py-2 px-4 rounded-lg text-sm disabled:opacity-50">
-                            {isTesting ? <><RefreshCw className="animate-spin" size={16}/> Testando...</> : 'Testar Conexão'}
-                        </button>
-                        <button className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm">Salvar Configurações</button>
-                    </div>
-                </div>
-            </Card>
-        </div>
-    );
-}
-
-// --- Login Page ---
-const LoginPage = ({ onLoginSuccess }) => {
+const SetupWizard = ({ onSetupComplete }) => {
+    const [step, setStep] = useState(1); // 1: Firebase, 2: Admin, 3: Done
     const [isLoading, setIsLoading] = useState(false);
-    const [provider, setProvider] = useState(null);
+    const [error, setError] = useState('');
+    const [config, setConfig] = useState('');
+    const [admin, setAdmin] = useState({ name: '', email: '', password: '' });
+    const addToast = useToast();
 
-    const handleLogin = (prov) => {
+    const testFirebaseConnection = async (firebaseConfig) => {
+        try {
+            const tempApp = initializeApp(firebaseConfig, `test-app-${Date.now()}`);
+            const tempDb = getFirestore(tempApp);
+            // Attempt a simple read operation. Let's try to access a non-existent doc. This just tests connectivity and permissions.
+            await getDocs(collection(tempDb, `__test_connection__`));
+            return true;
+        } catch (e) {
+            console.error("Firebase connection test failed:", e);
+            if (e.message.includes("permission-denied")) {
+              setError("Erro: As regras de segurança do Firestore não permitem leitura/escrita. Verifique suas regras no console do Firebase.");
+            } else if (e.message.includes("invalid-api-key")) {
+              setError("Erro: A chave de API na configuração parece ser inválida.");
+            } else {
+              setError("Erro: Não foi possível conectar ao Firebase. Verifique o objeto de configuração e a conectividade de rede.");
+            }
+            return false;
+        }
+    };
+    
+    const handleFirebaseSubmit = async (e) => {
+        e.preventDefault();
         setIsLoading(true);
-        setProvider(prov);
-        // Simulate API call and redirect for OAuth flow
-        setTimeout(() => {
-            // In a real app, this would be replaced by handling the OAuth callback.
-            // Here, we just mock a successful login with a predefined user.
-            const mockUser = initialUsers.find(u => u.id === 1); // Simulate logging in as Admin
-            onLoginSuccess(mockUser);
-        }, 2000);
+        setError('');
+        try {
+            const parsedConfig = JSON.parse(config);
+            if (!await testFirebaseConnection(parsedConfig)) {
+                setIsLoading(false);
+                return;
+            }
+            localStorage.setItem('firebaseConfig', config);
+            addToast('Conexão com o Firebase bem-sucedida!', 'success');
+            setStep(2);
+        } catch (err) {
+            setError('O texto inserido não é um objeto JSON de configuração do Firebase válido.');
+        }
+        setIsLoading(false);
     };
 
+    const handleAdminSubmit = async (e) => {
+        e.preventDefault();
+        setIsLoading(true);
+        setError('');
+        try {
+            const configString = localStorage.getItem('firebaseConfig');
+            const firebaseConfig = JSON.parse(configString);
+            const app = initializeApp(firebaseConfig);
+            const db = getFirestore(app);
+            
+            // Seed initial data
+            const batch = writeBatch(db);
+            const collections = {
+                assets: [
+                    { name: 'Servidor de Aplicação Web', type: 'Servidor', owner: 'TI', criticality: 'High' },
+                    { name: 'Banco de Dados de Clientes', type: 'Banco de Dados', owner: 'Negócios', criticality: 'Critical' },
+                ],
+                threats: [
+                    { name: 'Ataque de Ransomware', description: 'Software malicioso que criptografa dados e exige resgate.', type: 'Malicious' },
+                    { name: 'Falha de Hardware', description: 'Componente físico do servidor falha inesperadamente.', type: 'Accidental' },
+                ],
+                controls: [
+                    { name: 'Backup e Recuperação', description: 'Manter cópias de segurança dos dados e ter um plano para restaurá-los.', family: 'Recuperação', framework: 'NIST CSF' },
+                    { name: 'Controle de Acesso', description: 'Limitar o acesso a sistemas e dados apenas a usuários autorizados.', family: 'Proteção', framework: 'NIST CSF' },
+                ]
+            };
+
+            for (const [collectionName, data] of Object.entries(collections)) {
+                for (const item of data) {
+                    const docRef = doc(collection(db, collectionName));
+                    batch.set(docRef, item);
+                }
+            }
+
+            // Create admin user
+            const userRef = doc(collection(db, 'users'));
+            batch.set(userRef, { name: admin.name, email: admin.email, passwordHash: admin.password, role: 'Admin' });
+            
+            await batch.commit();
+
+            addToast('Administrador e dados iniciais criados com sucesso!', 'success');
+            localStorage.setItem('isSetupComplete', 'true');
+            setStep(3);
+        } catch (err) {
+            console.error(err);
+            setError('Ocorreu um erro ao criar o administrador e os dados iniciais.');
+        }
+        setIsLoading(false);
+    };
+
+    const Stepper = () => (
+      <div className="flex items-center justify-center mb-8">
+        <div className="flex items-center">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step >= 1 ? 'bg-primary text-white' : 'bg-gray-600 text-gray-400'}`}>1</div>
+          <span className={`ml-2 ${step >= 1 ? 'text-primary' : 'text-text-secondary'}`}>Firebase</span>
+        </div>
+        <div className={`h-0.5 w-16 mx-2 ${step >= 2 ? 'bg-primary' : 'bg-gray-600'}`}></div>
+        <div className="flex items-center">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step >= 2 ? 'bg-primary text-white' : 'bg-gray-600 text-gray-400'}`}>2</div>
+          <span className={`ml-2 ${step >= 2 ? 'text-primary' : 'text-text-secondary'}`}>Administrador</span>
+        </div>
+        <div className={`h-0.5 w-16 mx-2 ${step >= 3 ? 'bg-primary' : 'bg-gray-600'}`}></div>
+        <div className="flex items-center">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step >= 3 ? 'bg-primary text-white' : 'bg-gray-600 text-gray-400'}`}>✓</div>
+          <span className={`ml-2 ${step >= 3 ? 'text-primary' : 'text-text-secondary'}`}>Concluído</span>
+        </div>
+      </div>
+    );
+
     return (
-        <div className="h-screen w-screen flex items-center justify-center bg-background">
-            <div className="w-full max-w-md p-8 space-y-8 bg-surface rounded-2xl shadow-lg">
-                <div className="text-center">
-                    <div className="flex justify-center mb-4">
-                        <div className="bg-primary p-3 rounded-xl">
-                            <Shield className="h-10 w-10 text-white" />
+        <div className="flex items-center justify-center min-h-screen bg-background">
+            <div className="w-full max-w-2xl p-8 space-y-6 bg-surface rounded-lg shadow-lg border border-border-color">
+                <h1 className="text-3xl font-bold text-center text-primary">Instalação - EXA GRC</h1>
+                <Stepper />
+                {step === 1 && (
+                    <form onSubmit={handleFirebaseSubmit}>
+                        <h2 className="text-xl font-semibold text-center text-text-primary mb-4">1. Conectar ao Firebase</h2>
+                        <p className="text-center text-text-secondary mb-6">Cole o objeto de configuração do Firebase do seu projeto. Você pode encontrá-lo nas configurações do projeto no console do Firebase.</p>
+                        <textarea value={config} onChange={e => setConfig(e.target.value)} rows="8" placeholder='{ apiKey: "...", authDomain: "...", ... }' className="w-full p-2 text-gray-300 bg-background border border-border-color rounded-md font-mono text-sm"></textarea>
+                        {error && <p className="text-sm text-center text-danger mt-4">{error}</p>}
+                        <button type="submit" disabled={isLoading} className="w-full mt-6 py-2 px-4 bg-primary text-white rounded-md hover:bg-blue-700 disabled:opacity-50">
+                            {isLoading ? 'Testando...' : 'Conectar e Continuar'}
+                        </button>
+                    </form>
+                )}
+                 {step === 2 && (
+                    <form onSubmit={handleAdminSubmit}>
+                        <h2 className="text-xl font-semibold text-center text-text-primary mb-4">2. Criar Conta de Administrador</h2>
+                        <p className="text-center text-text-secondary mb-6">Crie o primeiro usuário, que terá permissões de administrador.</p>
+                        <div className="space-y-4">
+                            <input type="text" placeholder="Nome Completo" value={admin.name} onChange={e => setAdmin({...admin, name: e.target.value})} required className="w-full p-2 bg-background border border-border-color rounded-md" />
+                            <input type="email" placeholder="Email" value={admin.email} onChange={e => setAdmin({...admin, email: e.target.value})} required className="w-full p-2 bg-background border border-border-color rounded-md" />
+                            <input type="password" placeholder="Senha" value={admin.password} onChange={e => setAdmin({...admin, password: e.target.value})} required className="w-full p-2 bg-background border border-border-color rounded-md" />
                         </div>
+                         {error && <p className="text-sm text-center text-danger mt-4">{error}</p>}
+                        <button type="submit" disabled={isLoading} className="w-full mt-6 py-2 px-4 bg-primary text-white rounded-md hover:bg-blue-700 disabled:opacity-50">
+                            {isLoading ? 'Criando...' : 'Criar Administrador e Finalizar'}
+                        </button>
+                    </form>
+                )}
+                {step === 3 && (
+                    <div className="text-center">
+                        <CheckCircle className="mx-auto h-16 w-16 text-secondary mb-4" />
+                        <h2 className="text-2xl font-bold text-text-primary mb-2">Instalação Concluída!</h2>
+                        <p className="text-text-secondary mb-6">A plataforma EXA GRC foi configurada com sucesso. Você pode agora fazer login com a conta de administrador que acabou de criar.</p>
+                        <button onClick={onSetupComplete} className="py-2 px-8 bg-primary text-white rounded-md hover:bg-blue-700">
+                            Ir para o Login
+                        </button>
                     </div>
-                    <h1 className="text-2xl font-bold text-text-primary">Acessar EXA GRC</h1>
-                    <p className="text-sm text-text-secondary mt-2">Plataforma Integrada de Gestão de Riscos</p>
-                </div>
-                
-                <div className="space-y-4">
-                    <button 
-                        onClick={() => handleLogin('google')}
-                        disabled={isLoading}
-                        className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-background hover:bg-background/70 border border-border-color rounded-lg transition-colors disabled:opacity-50"
-                    >
-                        {isLoading && provider === 'google' ? <RefreshCw className="animate-spin" size={20} /> : 
-                            <svg className="w-5 h-5" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.8 2.66 30.3 0 24 0 14.62 0 6.81 5.44 3.06 13.11l7.69 6.01C12.33 13.72 17.7 9.5 24 9.5z"></path><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.42-4.55H24v9h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.26 5.6c4.24-3.89 6.64-9.61 6.64-16.23z"></path><path fill="#FBBC05" d="M10.75 28.73c-.22-.67-.35-1.37-.35-2.08s.13-1.41.35-2.08l-7.7-6.01C1.22 19.64 0 21.75 0 24s1.22 4.36 3.05 5.72l7.7-6.01z"></path><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.26-5.6c-2.11 1.43-4.81 2.29-7.63 2.29-6.31 0-11.67-4.22-13.67-9.91l-7.69 6.01C6.81 42.56 14.62 48 24 48z"></path><path fill="none" d="M0 0h48v48H0z"></path></svg>
-                        }
-                        <span className="font-semibold text-sm">{isLoading && provider === 'google' ? 'Autenticando...' : 'Entrar com Google Workspace'}</span>
-                    </button>
-                    
-                     <button 
-                        onClick={() => handleLogin('jumpcloud')}
-                        disabled={isLoading}
-                        className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-background hover:bg-background/70 border border-border-color rounded-lg transition-colors disabled:opacity-50"
-                    >
-                        {isLoading && provider === 'jumpcloud' ? <RefreshCw className="animate-spin" size={20} /> : <KeyRound size={20} /> }
-                        <span className="font-semibold text-sm">{isLoading && provider === 'jumpcloud' ? 'Redirecionando...' : 'Entrar com JumpCloud SSO'}</span>
-                    </button>
-                </div>
-                
-                <p className="text-center text-xs text-text-secondary pt-4">© {new Date().getFullYear()} EXA GRC. Todos os direitos reservados.</p>
+                )}
             </div>
         </div>
     );
 };
 
-
-// --- Main App Component ---
 
 const App = () => {
-    const [activePage, setActivePage] = useState('Dashboard');
-    const [user, setUser] = useState(null);
-    // State is being decoupled from App and moved to individual pages.
-    const [users, setUsers] = useState(initialUsers);
-    const [profiles, setProfiles] = useState(initialProfiles);
-    const [groups, setGroups] = useState(initialGroups);
-    const [alertRules, setAlertRules] = useState(initialAlertRules);
-    const [highlightedItem, setHighlightedItem] = useState({ page: null, id: null });
-    const [ssoConfig, setSsoConfig] = useState({
-      google: { enabled: true, clientId: '', clientSecret: '' },
-      jumpcloud: { enabled: false, ssoUrl: '', entityId: '', certificate: '' }
-    });
-    
-    const handleLoginSuccess = (loggedInUser) => {
-        setUser(loggedInUser);
-    };
+  const [isSetupComplete, setIsSetupComplete] = useState(localStorage.getItem('isSetupComplete') === 'true');
+  const { isAuthenticated } = useAuth();
+  const { isDbReady } = useDb();
 
-    const handleLogout = () => {
-        setUser(null);
-    };
-    
-    if (!user) {
-        return <LoginPage onLoginSuccess={handleLoginSuccess} />;
-    }
-
-    const renderPage = () => {
-        switch (activePage) {
-            case 'Dashboard': return <DashboardPage />;
-            case 'Riscos': return <RisksPage highlightedItem={highlightedItem} setHighlightedItem={setHighlightedItem} />;
-            case 'Ativos': return <AssetsPage highlightedItem={highlightedItem} setHighlightedItem={setHighlightedItem} />;
-            case 'Obsolescência': return <ObsolescencePage />;
-            case 'Conformidade': return <CompliancePage />;
-            case 'Controles de Dados': return <DataControlsPage />;
-            case 'Análise de IA': return <AIAnalysisPage setActivePage={setActivePage} setHighlightedItem={setHighlightedItem} />;
-            case 'Configurações':
-                return <SettingsPage 
-                            users={users} setUsers={setUsers}
-                            profiles={profiles} setProfiles={setProfiles}
-                            groups={groups} setGroups={setGroups}
-                            alertRules={alertRules} setAlertRules={setAlertRules}
-                            ssoConfig={ssoConfig} setSsoConfig={setSsoConfig}
-                        />;
-            default: return <DashboardPage />;
-        }
-    };
-
+  if (!isSetupComplete) {
+      return <SetupWizard onSetupComplete={() => { setIsSetupComplete(true); window.location.reload(); }} />;
+  }
+  
+  if (!isDbReady && isSetupComplete) {
     return (
-        <div className="h-screen w-screen flex flex-col bg-background">
-            <Header user={user} onLogout={handleLogout} />
-            <div className="flex flex-grow overflow-hidden">
-                <Sidebar activePage={activePage} setActivePage={setActivePage} />
-                <main className="flex-grow bg-background overflow-auto">
-                    {renderPage()}
-                </main>
-            </div>
+        <div className="flex flex-col items-center justify-center min-h-screen bg-background text-text-primary">
+            <Spinner />
+            <p className="mt-4">Conectando ao banco de dados...</p>
         </div>
     );
+  }
+
+  return isAuthenticated ? <Layout><Router /></Layout> : <Login />;
 };
 
-const root = createRoot(document.getElementById('root'));
-root.render(
-    <ToastProvider>
-        <App />
-    </ToastProvider>
-);
+// --- RENDER ---
+const container = document.getElementById('root');
+if (container) {
+  const root = createRoot(container);
+  root.render(
+    <React.StrictMode>
+      <ToastProvider>
+        <ThemeProvider>
+          <DbProvider>
+            <AuthProvider>
+              <App />
+            </AuthProvider>
+          </DbProvider>
+        </ThemeProvider>
+      </ToastProvider>
+    </React.StrictMode>
+  );
+}
