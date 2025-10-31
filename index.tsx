@@ -1,6 +1,6 @@
 import React, { useState, useMemo, createContext, useContext, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Shield, LayoutDashboard, BarChart3, Users, Settings, Briefcase, GanttChartSquare, BrainCircuit, Zap, Plus, Search, DatabaseZap, AlertTriangle, ChevronDown, Upload, Download, Edit, Trash2, UserPlus, Bell, RefreshCw, FileDown, Bot, Clock, Users2, UserCheck, Mail, ExternalLink, LogOut, KeyRound } from 'lucide-react';
+import { Shield, LayoutDashboard, BarChart3, Users, Settings, Briefcase, GanttChartSquare, BrainCircuit, Zap, Plus, Search, DatabaseZap, AlertTriangle, ChevronDown, Upload, Download, Edit, Trash2, UserPlus, Bell, RefreshCw, FileDown, Bot, Clock, Users2, UserCheck, Mail, ExternalLink, LogOut, KeyRound, CheckCircle, XCircle } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 
 // --- AI Client Initialization ---
@@ -239,9 +239,99 @@ const allControls: Control[] = [
     ...Array.from({length: 5}, (_, i) => ({ id: `CIS-18.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 18: Teste de Penetração', name: `Salvaguarda 18.${i+1}`, description: `Descrição para a Salvaguarda 18.${i+1}`, status: ControlStatus.NotImplemented })),
 ];
 
+// --- Mock API Layer (Simulates a backend) ---
+const apiClient = {
+    _latency: 500,
+    _db: {
+        risks: JSON.parse(JSON.stringify(initialRisks)) as Risk[],
+    },
+    async getRisks(): Promise<Risk[]> {
+        await new Promise(res => setTimeout(res, this._latency));
+        // if (Math.random() > 0.8) throw new Error("Network Error"); // Simulate random error
+        return JSON.parse(JSON.stringify(this._db.risks));
+    },
+    async createRisk(riskData: Omit<Risk, 'id' | 'creationDate'>): Promise<Risk> {
+        await new Promise(res => setTimeout(res, this._latency + 200));
+        const maxId = this._db.risks.reduce((max, r) => Math.max(r.id, max), 0);
+        const newRisk: Risk = {
+            ...riskData,
+            id: maxId + 1,
+            creationDate: new Date().toISOString()
+        };
+        this._db.risks.push(newRisk);
+        return JSON.parse(JSON.stringify(newRisk));
+    },
+    async updateRisk(riskData: Risk): Promise<Risk> {
+        await new Promise(res => setTimeout(res, this._latency + 200));
+        const index = this._db.risks.findIndex(r => r.id === riskData.id);
+        if (index === -1) throw new Error("Risk not found");
+        this._db.risks[index] = riskData;
+        return JSON.parse(JSON.stringify(riskData));
+    },
+    async deleteRisk(riskId: number): Promise<{ id: number }> {
+        await new Promise(res => setTimeout(res, this._latency + 300));
+        const initialLength = this._db.risks.length;
+        this._db.risks = this._db.risks.filter(r => r.id !== riskId);
+        if (this._db.risks.length === initialLength) throw new Error("Risk not found");
+        return { id: riskId };
+    },
+    async resetData(): Promise<void> {
+        await new Promise(res => setTimeout(res, this._latency));
+        this._db.risks = JSON.parse(JSON.stringify(initialRisks));
+    }
+};
 
-// --- CONTEXT for global state ---
-const AppContext = createContext(null);
+
+// --- Toast Notification System ---
+interface ToastMessage { id: number; message: string; type: 'success' | 'error'; }
+const ToastContext = createContext({ addToast: (message: string, type: 'success' | 'error') => {} });
+const useToast = () => useContext(ToastContext);
+
+// Fix: Explicitly type props for the Toast component using React.FC to ensure it's recognized as a React component, which correctly handles the special 'key' prop.
+const Toast: React.FC<{ message: string; type: 'success' | 'error'; onDismiss: () => void; }> = ({ message, type, onDismiss }) => {
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            onDismiss();
+        }, 5000);
+        return () => clearTimeout(timer);
+    }, [onDismiss]);
+
+    const isSuccess = type === 'success';
+    return (
+        <div className={`flex items-center gap-4 w-full max-w-sm p-4 rounded-lg shadow-lg text-white ${isSuccess ? 'bg-green-600' : 'bg-danger'} animate-fade-in-up`}>
+            {isSuccess ? <CheckCircle size={24} /> : <XCircle size={24} />}
+            <p className="text-sm font-semibold">{message}</p>
+            <button onClick={onDismiss} className="ml-auto -mx-1.5 -my-1.5 p-1.5 rounded-lg hover:bg-white/20 inline-flex h-8 w-8">
+                <span className="sr-only">Dismiss</span>
+                <XCircle className="w-5 h-5" />
+            </button>
+        </div>
+    );
+};
+
+// Fix: Explicitly type the 'children' prop to resolve ambiguity in type inference, satisfying the TypeScript compiler's requirement for the prop.
+const ToastProvider: React.FC<{children: React.ReactNode}> = ({ children }) => {
+    const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+    const addToast = (message, type) => {
+        setToasts(prev => [...prev, { id: Date.now(), message, type }]);
+    };
+    
+    const removeToast = (id) => {
+        setToasts(prev => prev.filter(toast => toast.id !== id));
+    };
+
+    return (
+        <ToastContext.Provider value={{ addToast }}>
+            {children}
+            <div className="fixed bottom-4 right-4 z-[100] space-y-2">
+                {toasts.map(toast => (
+                    <Toast key={toast.id} message={toast.message} type={toast.type} onDismiss={() => removeToast(toast.id)} />
+                ))}
+            </div>
+        </ToastContext.Provider>
+    );
+};
 
 
 // --- UI Components ---
@@ -418,7 +508,6 @@ const MaturityAndComplianceScores = ({ controls }) => {
             }
         });
 
-        // FIX: Switched from Object.entries to Object.keys to ensure type safety, preventing 'data' from being inferred as 'unknown'.
         const results: Record<string, { compliance: number; maturity: string }> = {};
         for (const fw in initial) {
             const data = initial[fw];
@@ -471,9 +560,7 @@ const RiskByTypeChart = ({ risks }) => {
         }, initialSummary);
     }, [risks]);
 
-    // FIX: Cast values to 'number' to allow arithmetic operations, as Object.entries can infer 'unknown'.
     const sortedSummary = Object.entries(summary).sort(([, a], [, b]) => (b as number) - (a as number));
-    // FIX: Cast mapped 'count' to 'number' as Math.max expects number arguments.
     const maxCount = Math.max(...sortedSummary.map(([, count]) => count as number), 0) || 1;
 
     const riskTypeColors: Record<RiskType, string> = {
@@ -544,7 +631,6 @@ const ObsolescenceDashboardCard = ({ items }) => {
                 <div>
                      <h3 className="font-semibold text-sm mb-3">Obsoletos por Categoria</h3>
                      <div className="space-y-3">
-                        {/* FIX: Switched to Object.keys and added a type cast to ensure 'data' is correctly typed and its properties can be accessed safely. */}
                         {Object.keys(summary.byCategory).map((type) => {
                             const data = summary.byCategory[type as ObsolescenceAssetType];
                             return (
@@ -570,7 +656,27 @@ const ObsolescenceDashboardCard = ({ items }) => {
 };
 
 
-const DashboardPage = ({ risks, controls, obsolescenceItems }) => {
+const DashboardPage = ({ controls, obsolescenceItems }) => {
+    const [risks, setRisks] = useState<Risk[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const fetchRisks = async () => {
+            try {
+                setIsLoading(true);
+                setError(null);
+                const fetchedRisks = await apiClient.getRisks();
+                setRisks(fetchedRisks);
+            } catch (err) {
+                setError('Falha ao carregar os dados de riscos.');
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchRisks();
+    }, []);
+
     const riskStatusCounts = useMemo(() => {
         const initialCounts = Object.values(RiskStatus).reduce((acc, status) => {
             acc[status] = 0;
@@ -585,16 +691,24 @@ const DashboardPage = ({ risks, controls, obsolescenceItems }) => {
 
     return (
         <div className="p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <Card className="lg:col-span-1 bg-gradient-to-br from-red-500 to-danger"><h3 className="text-base font-semibold">Riscos Abertos</h3><p className="text-3xl font-bold">{riskStatusCounts[RiskStatus.Open]}</p></Card>
-            <Card className="lg:col-span-1 bg-gradient-to-br from-yellow-500 to-orange-500"><h3 className="text-base font-semibold">Em Andamento</h3><p className="text-3xl font-bold">{riskStatusCounts[RiskStatus.InProgress]}</p></Card>
-            <Card className="lg:col-span-1 bg-gradient-to-br from-green-500 to-secondary"><h3 className="text-base font-semibold">Riscos Mitigados</h3><p className="text-3xl font-bold">{riskStatusCounts[RiskStatus.Mitigated]}</p></Card>
-            <Card className="lg:col-span-1 bg-gradient-to-br from-blue-500 to-primary"><h3 className="text-base font-semibold">Riscos Aceitos</h3><p className="text-3xl font-bold">{riskStatusCounts[RiskStatus.Accepted]}</p></Card>
+            <Card className="lg:col-span-1 bg-gradient-to-br from-red-500 to-danger"><h3 className="text-base font-semibold">Riscos Abertos</h3><p className="text-3xl font-bold">{isLoading ? '...' : riskStatusCounts[RiskStatus.Open]}</p></Card>
+            <Card className="lg:col-span-1 bg-gradient-to-br from-yellow-500 to-orange-500"><h3 className="text-base font-semibold">Em Andamento</h3><p className="text-3xl font-bold">{isLoading ? '...' : riskStatusCounts[RiskStatus.InProgress]}</p></Card>
+            <Card className="lg:col-span-1 bg-gradient-to-br from-green-500 to-secondary"><h3 className="text-base font-semibold">Riscos Mitigados</h3><p className="text-3xl font-bold">{isLoading ? '...' : riskStatusCounts[RiskStatus.Mitigated]}</p></Card>
+            <Card className="lg:col-span-1 bg-gradient-to-br from-blue-500 to-primary"><h3 className="text-base font-semibold">Riscos Aceitos</h3><p className="text-3xl font-bold">{isLoading ? '...' : riskStatusCounts[RiskStatus.Accepted]}</p></Card>
             
             <MaturityAndComplianceScores controls={controls} />
 
             <div className="lg:col-span-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
-                 <RiskHeatmap risks={risks} />
-                 <RiskByTypeChart risks={risks} />
+                {isLoading ? (
+                    <Card><h2 className="text-base font-semibold">Carregando Heatmap...</h2></Card>
+                ) : (
+                    <RiskHeatmap risks={risks} />
+                )}
+                {isLoading ? (
+                     <Card><h2 className="text-base font-semibold">Carregando Riscos...</h2></Card>
+                ) : (
+                    <RiskByTypeChart risks={risks} />
+                )}
                  <ObsolescenceDashboardCard items={obsolescenceItems} />
             </div>
         </div>
@@ -604,7 +718,7 @@ const DashboardPage = ({ risks, controls, obsolescenceItems }) => {
 
 // --- Risks Page Components ---
 
-const RiskModal = ({ risk, onSave, onClose }) => {
+const RiskModal = ({ risk, onSave, onClose, isSaving }) => {
     const [formData, setFormData] = useState(
         risk || {
             title: '', description: '', probability: 1, impact: 1, status: RiskStatus.Open, owner: '',
@@ -693,8 +807,10 @@ const RiskModal = ({ risk, onSave, onClose }) => {
                         <textarea name="actionPlan" value={formData.actionPlan} onChange={handleChange} rows="4" className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm"></textarea>
                     </div>
                      <div className="flex justify-end gap-4 pt-4 flex-shrink-0">
-                        <button type="button" onClick={onClose} className="bg-surface/50 hover:bg-surface/80 font-semibold py-2 px-4 rounded-lg text-sm">Cancelar</button>
-                        <button type="submit" className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm">Salvar</button>
+                        <button type="button" onClick={onClose} disabled={isSaving} className="bg-surface/50 hover:bg-surface/80 font-semibold py-2 px-4 rounded-lg text-sm disabled:opacity-50">Cancelar</button>
+                        <button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm w-28 disabled:opacity-50">
+                            {isSaving ? <RefreshCw className="animate-spin mx-auto" size={20} /> : 'Salvar'}
+                        </button>
                     </div>
                 </form>
             </div>
@@ -702,7 +818,7 @@ const RiskModal = ({ risk, onSave, onClose }) => {
     );
 };
 
-const RiskTable = ({ risks, onEdit, onDelete, highlightedRowId }) => {
+const RiskTable = ({ risks, onEdit, onDelete, highlightedRowId, isLoading }) => {
     const formatDate = (dateString) => {
         if (!dateString) return 'N/A';
         const date = new Date(dateString);
@@ -744,6 +860,24 @@ const RiskTable = ({ risks, onEdit, onDelete, highlightedRowId }) => {
         }
     };
     
+    const SkeletonRow = () => (
+        <tr className="border-t border-border-color">
+            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
+            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
+            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
+            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
+            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
+            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
+            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
+            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
+            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
+            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
+            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
+            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
+            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
+        </tr>
+    );
+
     return (
         <div className="bg-surface rounded-lg overflow-x-auto">
             <table className="w-full text-left table-auto">
@@ -765,46 +899,73 @@ const RiskTable = ({ risks, onEdit, onDelete, highlightedRowId }) => {
                     </tr>
                 </thead>
                 <tbody className="text-xs">
-                    {risks.map(risk => {
-                        const classification = getRiskClassification(risk.probability, risk.impact);
-                        const dueDateStatus = getDueDateStatus(risk);
+                    {isLoading ? (
+                       Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
+                    ) : (
+                        risks.map(risk => {
+                            const classification = getRiskClassification(risk.probability, risk.impact);
+                            const dueDateStatus = getDueDateStatus(risk);
 
-                        return (
-                            <tr key={risk.id} className={`border-t border-border-color hover:bg-surface/50 ${risk.id === highlightedRowId ? 'highlight-row' : ''}`}>
-                                <td className="px-2 py-3 font-mono">{risk.id}</td>
-                                <td className="px-2 py-3 max-w-xs"><p className="font-semibold truncate" title={risk.title}>{risk.title}</p></td>
-                                <td className="px-2 py-3 text-center">{formatDate(risk.creationDate)}</td>
-                                <td className="px-2 py-3 text-center">{risk.probability}</td>
-                                <td className="px-2 py-3 text-center">{risk.impact}</td>
-                                <td className="px-2 py-3 text-center"><span className={`px-2 py-0.5 rounded-full font-bold ${classification.className}`}>{classification.text}</span></td>
-                                <td className="px-2 py-3 truncate" title={risk.owner}>{risk.owner}</td>
-                                <td className="px-2 py-3 text-center">{formatDate(risk.dueDate)}</td>
-                                 <td className="px-2 py-3 text-center"><span className={`px-2 py-0.5 rounded-full font-semibold ${dueDateStatus.className}`}>{dueDateStatus.text}</span></td>
-                                <td className="px-2 py-3">{risk.status}</td>
-                                <td className="px-2 py-3 text-center font-mono">{calculateAgingDays(risk.creationDate)}</td>
-                                <td className="px-2 py-3 max-w-xs"><p className="truncate" title={risk.actionPlan}>{risk.actionPlan}</p></td>
-                                <td className="px-2 py-3 text-center">
-                                    <div className="flex gap-1 justify-center">
-                                        <button onClick={() => onEdit(risk)} className="text-text-secondary hover:text-primary p-1"><Edit size={14} /></button>
-                                        <button onClick={() => onDelete(risk.id)} className="text-text-secondary hover:text-danger p-1"><Trash2 size={14} /></button>
-                                    </div>
-                                </td>
-                            </tr>
-                        );
-                    })}
+                            return (
+                                <tr key={risk.id} className={`border-t border-border-color hover:bg-surface/50 ${risk.id === highlightedRowId ? 'highlight-row' : ''}`}>
+                                    <td className="px-2 py-3 font-mono">{risk.id}</td>
+                                    <td className="px-2 py-3 max-w-xs"><p className="font-semibold truncate" title={risk.title}>{risk.title}</p></td>
+                                    <td className="px-2 py-3 text-center">{formatDate(risk.creationDate)}</td>
+                                    <td className="px-2 py-3 text-center">{risk.probability}</td>
+                                    <td className="px-2 py-3 text-center">{risk.impact}</td>
+                                    <td className="px-2 py-3 text-center"><span className={`px-2 py-0.5 rounded-full font-bold ${classification.className}`}>{classification.text}</span></td>
+                                    <td className="px-2 py-3 truncate" title={risk.owner}>{risk.owner}</td>
+                                    <td className="px-2 py-3 text-center">{formatDate(risk.dueDate)}</td>
+                                    <td className="px-2 py-3 text-center"><span className={`px-2 py-0.5 rounded-full font-semibold ${dueDateStatus.className}`}>{dueDateStatus.text}</span></td>
+                                    <td className="px-2 py-3">{risk.status}</td>
+                                    <td className="px-2 py-3 text-center font-mono">{calculateAgingDays(risk.creationDate)}</td>
+                                    <td className="px-2 py-3 max-w-xs"><p className="truncate" title={risk.actionPlan}>{risk.actionPlan}</p></td>
+                                    <td className="px-2 py-3 text-center">
+                                        <div className="flex gap-1 justify-center">
+                                            <button onClick={() => onEdit(risk)} className="text-text-secondary hover:text-primary p-1"><Edit size={14} /></button>
+                                            <button onClick={() => onDelete(risk.id)} className="text-text-secondary hover:text-danger p-1"><Trash2 size={14} /></button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            );
+                        })
+                    )}
                 </tbody>
             </table>
         </div>
     );
 };
 
-const RisksPage = ({ risks, setRisks, highlightedItem, setHighlightedItem }) => {
+const RisksPage = ({ highlightedItem, setHighlightedItem }) => {
+    const [risks, setRisks] = useState<Risk[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [editingRisk, setEditingRisk] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const fileInputRef = useRef(null);
+    const toast = useToast();
 
     const highlightedRowId = (highlightedItem?.page === 'Riscos') ? highlightedItem.id : null;
+
+    const fetchRisks = async () => {
+        try {
+            setIsLoading(true);
+            setError(null);
+            const fetchedRisks = await apiClient.getRisks();
+            setRisks(fetchedRisks);
+        } catch (err) {
+            setError('Falha ao carregar os dados de riscos.');
+            toast.addToast('Falha ao carregar os dados de riscos.', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+    useEffect(() => {
+        fetchRisks();
+    }, []);
 
     useEffect(() => {
         let timerId = null;
@@ -825,26 +986,37 @@ const RisksPage = ({ risks, setRisks, highlightedItem, setHighlightedItem }) => 
         ), [risks, searchTerm]
     );
 
-    const openModal = (risk = null) => {
-        setEditingRisk(risk);
-        setIsModalOpen(true);
-    };
+    const openModal = (risk = null) => { setEditingRisk(risk); setIsModalOpen(true); };
     const closeModal = () => setIsModalOpen(false);
 
-    const handleSave = (riskData) => {
-        if (editingRisk) {
-            setRisks(risks.map(r => r.id === riskData.id ? riskData : r));
-        } else {
-            const maxId = risks.reduce((max, r) => Math.max(r.id, max), 0);
-            const newRisk = { ...riskData, id: maxId + 1, creationDate: new Date().toISOString() };
-            setRisks([...risks, newRisk]);
+    const handleSave = async (riskData) => {
+        setIsSaving(true);
+        try {
+            if (editingRisk) {
+                await apiClient.updateRisk(riskData);
+                toast.addToast('Risco atualizado com sucesso!', 'success');
+            } else {
+                await apiClient.createRisk(riskData);
+                toast.addToast('Risco adicionado com sucesso!', 'success');
+            }
+            closeModal();
+            fetchRisks();
+        } catch (error) {
+            toast.addToast('Falha ao salvar o risco.', 'error');
+        } finally {
+            setIsSaving(false);
         }
-        closeModal();
     };
 
-    const handleDelete = (riskId) => {
+    const handleDelete = async (riskId) => {
         if (window.confirm('Tem certeza que deseja excluir este risco?')) {
-            setRisks(risks.filter(r => r.id !== riskId));
+            try {
+                await apiClient.deleteRisk(riskId);
+                toast.addToast('Risco excluído com sucesso!', 'success');
+                fetchRisks();
+            } catch (error) {
+                toast.addToast('Falha ao excluir o risco.', 'error');
+            }
         }
     };
     
@@ -860,41 +1032,8 @@ const RisksPage = ({ risks, setRisks, highlightedItem, setHighlightedItem }) => 
     };
 
     const handleFileChange = (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const text = e.target.result as string;
-            try {
-                const lines = text.split('\n').filter(line => line.trim() !== '');
-                const headers = lines.shift().split(',').map(h => h.trim().replace(/"/g, ''));
-                let currentMaxId = risks.reduce((max, r) => Math.max(r.id, max), 0);
-                
-                const newRisks = lines.map(line => {
-                    const data = line.split(',');
-                    const riskObject = headers.reduce((obj, header, index) => {
-                        obj[header] = data[index] ? data[index].replace(/"/g, '') : '';
-                        return obj;
-                    }, {} as any);
-
-                    currentMaxId++;
-                    return {
-                        id: currentMaxId, creationDate: new Date().toISOString(), title: riskObject.title || 'Título não informado',
-                        description: riskObject.description || '', probability: parseInt(riskObject.probability) || 1, impact: parseInt(riskObject.impact) || 1,
-                        status: Object.values(RiskStatus).includes(riskObject.status) ? riskObject.status : RiskStatus.Open, owner: riskObject.owner || '',
-                        dueDate: riskObject.dueDate || new Date().toISOString().split('T')[0], type: Object.values(RiskType).includes(riskObject.type) ? riskObject.type : RiskType.Operational,
-                        sla: parseInt(riskObject.sla) || 30, planResponsible: riskObject.planResponsible || '', technicalResponsible: riskObject.technicalResponsible || '',
-                        actionPlan: riskObject.actionPlan || '', completionDate: riskObject.completionDate || '',
-                    };
-                });
-
-                setRisks(prev => [...prev, ...newRisks]);
-                alert(`${newRisks.length} riscos importados com sucesso!`);
-            } catch (error) { alert('Ocorreu um erro ao processar o arquivo CSV.'); }
-        };
-        reader.readAsText(file);
-        if(fileInputRef.current) fileInputRef.current.value = "";
+        // This would need to be adapted to use the API for each new risk.
+        toast.addToast('Importação via CSV ainda não integrada com a API.', 'error');
     };
 
     return (
@@ -915,9 +1054,11 @@ const RisksPage = ({ risks, setRisks, highlightedItem, setHighlightedItem }) => 
                 </div>
             </div>
             
-            <RiskTable risks={filteredRisks} onEdit={openModal} onDelete={handleDelete} highlightedRowId={highlightedRowId} />
+            {error && <div className="text-center text-danger p-4 bg-danger/10 rounded-lg">{error}</div>}
+            
+            <RiskTable risks={filteredRisks} onEdit={openModal} onDelete={handleDelete} highlightedRowId={highlightedRowId} isLoading={isLoading} />
 
-            {isModalOpen && <RiskModal risk={editingRisk} onSave={handleSave} onClose={closeModal} />}
+            {isModalOpen && <RiskModal risk={editingRisk} onSave={handleSave} onClose={closeModal} isSaving={isSaving} />}
         </div>
     );
 };
@@ -1668,7 +1809,9 @@ const AIAnalysisResult = ({ result, isFromCache }) => {
     );
 };
 
-const AIAnalysisPage = ({ risks, assets, setActivePage, setHighlightedItem }) => {
+const AIAnalysisPage = ({ assets, setActivePage, setHighlightedItem }) => {
+    const [risks, setRisks] = useState<Risk[]>([]);
+    const [isLoadingRisks, setIsLoadingRisks] = useState(true);
     const [selectedType, setSelectedType] = useState('risk');
     const [selectedId, setSelectedId] = useState('');
     const [scenario, setScenario] = useState('');
@@ -1677,6 +1820,21 @@ const AIAnalysisPage = ({ risks, assets, setActivePage, setHighlightedItem }) =>
     const [error, setError] = useState('');
     const [isFromCache, setIsFromCache] = useState(false);
     const analysisCache = useRef(new Map());
+
+    useEffect(() => {
+        const fetchRisks = async () => {
+            try {
+                setIsLoadingRisks(true);
+                const fetchedRisks = await apiClient.getRisks();
+                setRisks(fetchedRisks);
+            } catch (err) {
+                 setError("Falha ao carregar riscos para análise.");
+            } finally {
+                setIsLoadingRisks(false);
+            }
+        };
+        fetchRisks();
+    }, []);
 
     const handleGoToItem = () => {
         if (!selectedId) return;
@@ -1803,8 +1961,9 @@ const AIAnalysisPage = ({ risks, assets, setActivePage, setHighlightedItem }) =>
                             <label className="block text-xs font-medium mb-1" htmlFor="item-selector">Selecione o Item</label>
                             <div className="flex items-center gap-2">
                                 <select id="item-selector" value={selectedId} onChange={e => setSelectedId(e.target.value)}
-                                    className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm">
-                                    <option value="">-- Selecione --</option>
+                                    className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                                    disabled={isLoadingRisks}>
+                                    <option value="">{isLoadingRisks ? 'Carregando...' : '-- Selecione --'}</option>
                                     {options.map(item => <option key={item.id} value={item.id}>{item.name || item.title}</option>)}
                                 </select>
                                 <button
@@ -1826,7 +1985,7 @@ const AIAnalysisPage = ({ risks, assets, setActivePage, setHighlightedItem }) =>
                     </div>
                     {error && <p className="text-sm text-danger">{error}</p>}
                     <div>
-                        <button onClick={handleAnalysis} disabled={isLoading}
+                        <button onClick={handleAnalysis} disabled={isLoading || isLoadingRisks}
                             className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary/80 text-white font-semibold py-3 px-4 rounded-lg transition-colors disabled:bg-primary/50 disabled:cursor-not-allowed text-sm">
                             {isLoading ? <> <RefreshCw className="animate-spin" size={18} /> Analisando... </> : <> <Bot size={18} /> Analisar com IA </>}
                         </button>
@@ -2211,22 +2370,43 @@ const ProfileModal = ({ profile, onSave, onClose }) => {
 };
 
 const DataManagementTab = ({ appData, setAppData }) => {
-    const exportToCSV = (data, filename) => {
-        if (!data || data.length === 0) { alert("Não há dados para exportar."); return; }
+    const toast = useToast();
+    const exportToCSV = async (dataType, filename) => {
+        let data;
+        if (dataType === 'risks') {
+            try {
+                data = await apiClient.getRisks();
+            } catch (e) {
+                toast.addToast('Falha ao buscar riscos para exportação.', 'error');
+                return;
+            }
+        } else {
+            data = appData[dataType];
+        }
+
+        if (!data || data.length === 0) {
+             toast.addToast(`Não há dados de ${filename} para exportar.`, 'error');
+             return;
+        }
         const headers = Object.keys(data[0]);
         const csvRows = [headers.join(','), ...data.map(row => headers.map(fieldName => JSON.stringify(row[fieldName])).join(','))];
         const link = document.createElement("a");
         link.setAttribute("href", encodeURI("data:text/csv;charset=utf-8," + csvRows.join("\n")));
         link.setAttribute("download", `${filename}.csv`);
-        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
-    const handleReset = () => {
+    const handleReset = async () => {
         if (prompt('Ação irreversível. Digite "RESETAR" para confirmar.') === 'RESETAR') {
-            setAppData.setRisks(initialRisks); setAppData.setAssets(initialAssets); setAppData.setDataControls(mockDataControls);
-            setAppData.setComplianceControls(allControls); setAppData.setObsolescenceItems(initialObsolescenceItems);
-            alert('Dados resetados para o estado inicial.');
-        } else { alert('Ação cancelada.'); }
+            await apiClient.resetData();
+            // This is a temporary solution. In a real app, pages would refetch data.
+            // For now, we'll alert the user to refresh.
+            toast.addToast('Dados de riscos resetados. Recarregue a página para ver as mudanças.', 'success');
+        } else {
+            toast.addToast('Ação cancelada.', 'error');
+        }
     };
     
     return (
@@ -2234,17 +2414,17 @@ const DataManagementTab = ({ appData, setAppData }) => {
              <Card>
                 <h3 className="text-base font-semibold mb-4 border-b border-border-color pb-2">Exportar Dados</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <button onClick={() => exportToCSV(appData.risks, 'export_riscos')} className="flex w-full items-center justify-center gap-2 bg-surface hover:bg-surface/80 text-text-primary font-semibold py-2 px-4 rounded-lg text-sm"><FileDown size={18} /> Exportar Riscos</button>
-                    <button onClick={() => exportToCSV(appData.assets, 'export_ativos')} className="flex w-full items-center justify-center gap-2 bg-surface hover:bg-surface/80 text-text-primary font-semibold py-2 px-4 rounded-lg text-sm"><FileDown size={18} /> Exportar Ativos</button>
-                    <button onClick={() => exportToCSV(appData.obsolescenceItems, 'export_obsolescencia')} className="flex w-full items-center justify-center gap-2 bg-surface hover:bg-surface/80 text-text-primary font-semibold py-2 px-4 rounded-lg text-sm"><FileDown size={18} /> Exportar Obsolescência</button>
+                    <button onClick={() => exportToCSV('risks', 'export_riscos')} className="flex w-full items-center justify-center gap-2 bg-surface hover:bg-surface/80 text-text-primary font-semibold py-2 px-4 rounded-lg text-sm"><FileDown size={18} /> Exportar Riscos</button>
+                    <button onClick={() => exportToCSV('assets', 'export_ativos')} className="flex w-full items-center justify-center gap-2 bg-surface hover:bg-surface/80 text-text-primary font-semibold py-2 px-4 rounded-lg text-sm"><FileDown size={18} /> Exportar Ativos</button>
+                    <button onClick={() => exportToCSV('obsolescenceItems', 'export_obsolescencia')} className="flex w-full items-center justify-center gap-2 bg-surface hover:bg-surface/80 text-text-primary font-semibold py-2 px-4 rounded-lg text-sm"><FileDown size={18} /> Exportar Obsolescência</button>
                 </div>
             </Card>
             <Card className="border border-danger/50">
                  <h3 className="text-base font-semibold mb-2 text-danger">Zona de Perigo</h3>
-                 <p className="text-xs text-text-secondary mb-4">Ações nesta seção são permanentes.</p>
+                 <p className="text-xs text-text-secondary mb-4">Ações nesta seção são permanentes e afetam apenas os dados simulados no backend.</p>
                  <div className="flex justify-between items-center bg-background/50 p-4 rounded-lg">
-                     <div><p className="font-semibold text-sm">Resetar Dados da Aplicação</p><p className="text-xs text-text-secondary">Restaura todos os dados para o estado inicial.</p></div>
-                     <button onClick={handleReset} className="flex items-center gap-2 bg-danger hover:bg-danger/80 text-white font-bold py-2 px-4 rounded-lg text-sm"><RefreshCw size={18} /> Resetar Dados</button>
+                     <div><p className="font-semibold text-sm">Resetar Dados de Riscos</p><p className="text-xs text-text-secondary">Restaura os dados de riscos para o estado inicial.</p></div>
+                     <button onClick={handleReset} className="flex items-center gap-2 bg-danger hover:bg-danger/80 text-white font-bold py-2 px-4 rounded-lg text-sm"><RefreshCw size={18} /> Resetar</button>
                  </div>
             </Card>
         </div>
@@ -2522,7 +2702,6 @@ const LoginPage = ({ onLoginSuccess }) => {
 const App = () => {
     const [activePage, setActivePage] = useState('Dashboard');
     const [user, setUser] = useState(null);
-    const [risks, setRisks] = useState(initialRisks);
     const [assets, setAssets] = useState(initialAssets);
     const [dataControls, setDataControls] = useState(mockDataControls);
     const [complianceControls, setComplianceControls] = useState(allControls);
@@ -2551,13 +2730,13 @@ const App = () => {
 
     const renderPage = () => {
         switch (activePage) {
-            case 'Dashboard': return <DashboardPage risks={risks} controls={complianceControls} obsolescenceItems={obsolescenceItems} />;
-            case 'Riscos': return <RisksPage risks={risks} setRisks={setRisks} highlightedItem={highlightedItem} setHighlightedItem={setHighlightedItem} />;
+            case 'Dashboard': return <DashboardPage controls={complianceControls} obsolescenceItems={obsolescenceItems} />;
+            case 'Riscos': return <RisksPage highlightedItem={highlightedItem} setHighlightedItem={setHighlightedItem} />;
             case 'Ativos': return <AssetsPage assets={assets} setAssets={setAssets} highlightedItem={highlightedItem} setHighlightedItem={setHighlightedItem} />;
             case 'Obsolescência': return <ObsolescencePage items={obsolescenceItems} setItems={setObsolescenceItems} />;
             case 'Conformidade': return <CompliancePage controls={complianceControls} setControls={setComplianceControls} />;
             case 'Controles de Dados': return <DataControlsPage dataControls={dataControls} setDataControls={setDataControls} />;
-            case 'Análise de IA': return <AIAnalysisPage risks={risks} assets={assets} setActivePage={setActivePage} setHighlightedItem={setHighlightedItem} />;
+            case 'Análise de IA': return <AIAnalysisPage assets={assets} setActivePage={setActivePage} setHighlightedItem={setHighlightedItem} />;
             case 'Configurações':
                 return <SettingsPage 
                             users={users} setUsers={setUsers}
@@ -2565,10 +2744,10 @@ const App = () => {
                             groups={groups} setGroups={setGroups}
                             alertRules={alertRules} setAlertRules={setAlertRules}
                             ssoConfig={ssoConfig} setSsoConfig={setSsoConfig}
-                            appData={{ risks, assets, dataControls, complianceControls, obsolescenceItems }}
-                            setAppData={{ setRisks, setAssets, setDataControls, setComplianceControls, setObsolescenceItems }}
+                            appData={{ assets, dataControls, complianceControls, obsolescenceItems }}
+                            setAppData={{ setAssets, setDataControls, setComplianceControls, setObsolescenceItems }}
                         />;
-            default: return <DashboardPage risks={risks} controls={complianceControls} obsolescenceItems={obsolescenceItems} />;
+            default: return <DashboardPage controls={complianceControls} obsolescenceItems={obsolescenceItems} />;
         }
     };
 
@@ -2586,4 +2765,8 @@ const App = () => {
 };
 
 const root = createRoot(document.getElementById('root'));
-root.render(<App />);
+root.render(
+    <ToastProvider>
+        <App />
+    </ToastProvider>
+);
