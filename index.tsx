@@ -1,6 +1,6 @@
 import React, { useState, useMemo, createContext, useContext, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Shield, LayoutDashboard, BarChart3, Users, Settings, Briefcase, GanttChartSquare, BrainCircuit, Zap, Plus, Search, DatabaseZap, AlertTriangle, ChevronDown, Upload, Download, Edit, Trash2, UserPlus, Bell, RefreshCw, FileDown, Bot, Clock, Users2, UserCheck, Mail, ExternalLink } from 'lucide-react';
+import { Shield, LayoutDashboard, BarChart3, Users, Settings, Briefcase, GanttChartSquare, BrainCircuit, Zap, Plus, Search, DatabaseZap, AlertTriangle, ChevronDown, Upload, Download, Edit, Trash2, UserPlus, Bell, RefreshCw, FileDown, Bot, Clock, Users2, UserCheck, Mail, ExternalLink, LogOut, KeyRound } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 
 // --- AI Client Initialization ---
@@ -246,7 +246,7 @@ const AppContext = createContext(null);
 
 // --- UI Components ---
 
-const Header = ({ user }) => (
+const Header = ({ user, onLogout }) => (
     <header className="bg-surface p-4 border-b border-border-color flex justify-between items-center">
         <div className="flex items-center gap-3">
             <div className="bg-primary p-2 rounded-lg">
@@ -262,6 +262,9 @@ const Header = ({ user }) => (
             <div className="w-10 h-10 bg-secondary rounded-full flex items-center justify-center font-bold text-background">
                 {user.name.charAt(0)}
             </div>
+             <button onClick={onLogout} title="Sair" className="p-2 text-text-secondary hover:text-danger transition-colors">
+                <LogOut size={20} />
+            </button>
         </div>
     </header>
 );
@@ -1837,9 +1840,108 @@ const AIAnalysisPage = ({ risks, assets, setActivePage, setHighlightedItem }) =>
 
 
 // --- Settings Page ---
+
+const AuthenticationSettingsTab = ({ ssoConfig, setSsoConfig }) => {
+    const handleGoogleChange = e => {
+        const { name, value, type, checked } = e.target;
+        setSsoConfig(prev => ({
+            ...prev,
+            google: { ...prev.google, [name]: type === 'checkbox' ? checked : value }
+        }));
+    };
+
+    const handleJumpCloudChange = e => {
+        const { name, value, type, checked } = e.target;
+        setSsoConfig(prev => ({
+            ...prev,
+            jumpcloud: { ...prev.jumpcloud, [name]: type === 'checkbox' ? checked : value }
+        }));
+    };
+
+    const handleSave = (provider) => {
+        // In a real app, this would make an API call. Here we just show a confirmation.
+        alert(`Configurações de ${provider} salvas com sucesso!`);
+    };
+
+    return (
+        <div className="max-w-4xl mx-auto space-y-8">
+            <Card>
+                <div className="flex justify-between items-start mb-4">
+                    <div>
+                        <h3 className="text-base font-semibold mb-1">Google Workspace SSO</h3>
+                        <p className="text-xs text-text-secondary">Configure o login social com o Google para os usuários do seu domínio.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="google-enabled" className={`text-xs font-medium ${ssoConfig.google.enabled ? 'text-green-400' : 'text-text-secondary'}`}>
+                            {ssoConfig.google.enabled ? 'Habilitado' : 'Desabilitado'}
+                        </label>
+                        <div className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="google-enabled" name="enabled" checked={ssoConfig.google.enabled} onChange={handleGoogleChange} className="sr-only peer" />
+                            <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-focus:ring-2 peer-focus:ring-primary peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                        </div>
+                    </div>
+                </div>
+                <div className="space-y-4 pt-4 border-t border-border-color">
+                     <div>
+                        <label className="block text-xs font-medium mb-1">Client ID</label>
+                        <input type="text" name="clientId" placeholder="Seu Client ID do Google" value={ssoConfig.google.clientId} onChange={handleGoogleChange} className="w-full bg-background border border-border-color rounded-lg p-2 text-sm" />
+                    </div>
+                     <div>
+                        <label className="block text-xs font-medium mb-1">Client Secret</label>
+                        <input type="password" name="clientSecret" placeholder="******************" value={ssoConfig.google.clientSecret} onChange={handleGoogleChange} className="w-full bg-background border border-border-color rounded-lg p-2 text-sm" />
+                    </div>
+                     <div>
+                        <label className="block text-xs font-medium mb-1">Redirect URI (Callback URL)</label>
+                        <input type="text" readOnly value="https://grc.exa.com.br/auth/google/callback" className="w-full bg-background/50 border border-border-color rounded-lg p-2 text-sm text-text-secondary" />
+                    </div>
+                    <div className="flex justify-end">
+                        <button onClick={() => handleSave('Google Workspace')} className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm">Salvar</button>
+                    </div>
+                </div>
+            </Card>
+
+            <Card>
+                <div className="flex justify-between items-start mb-4">
+                    <div>
+                        <h3 className="text-base font-semibold mb-1">JumpCloud SAML SSO</h3>
+                        <p className="text-xs text-text-secondary">Configure a autenticação via SAML com o JumpCloud.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="jumpcloud-enabled" className={`text-xs font-medium ${ssoConfig.jumpcloud.enabled ? 'text-green-400' : 'text-text-secondary'}`}>
+                            {ssoConfig.jumpcloud.enabled ? 'Habilitado' : 'Desabilitado'}
+                        </label>
+                        <div className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="jumpcloud-enabled" name="enabled" checked={ssoConfig.jumpcloud.enabled} onChange={handleJumpCloudChange} className="sr-only peer" />
+                            <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-focus:ring-2 peer-focus:ring-primary peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                        </div>
+                    </div>
+                </div>
+                <div className="space-y-4 pt-4 border-t border-border-color">
+                     <div>
+                        <label className="block text-xs font-medium mb-1">SSO URL (Identity Provider Single Sign-On URL)</label>
+                        <input type="url" name="ssoUrl" placeholder="https://sso.jumpcloud.com/saml2/..." value={ssoConfig.jumpcloud.ssoUrl} onChange={handleJumpCloudChange} className="w-full bg-background border border-border-color rounded-lg p-2 text-sm" />
+                    </div>
+                     <div>
+                        <label className="block text-xs font-medium mb-1">Entity ID (Identity Provider Issuer)</label>
+                        <input type="text" name="entityId" placeholder="urn:sso.jumpcloud.com:..." value={ssoConfig.jumpcloud.entityId} onChange={handleJumpCloudChange} className="w-full bg-background border border-border-color rounded-lg p-2 text-sm" />
+                    </div>
+                     <div>
+                        <label className="block text-xs font-medium mb-1">Certificado Público (x.509)</label>
+                        <textarea name="certificate" rows="5" placeholder="Cole o certificado x.509 aqui..." value={ssoConfig.jumpcloud.certificate} onChange={handleJumpCloudChange} className="w-full bg-background border border-border-color rounded-lg p-2 text-sm font-mono"></textarea>
+                    </div>
+                    <div className="flex justify-end">
+                         <button onClick={() => handleSave('JumpCloud')} className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm">Salvar</button>
+                    </div>
+                </div>
+            </Card>
+        </div>
+    );
+};
+
+
 const SettingsPage = ({
   users, setUsers, profiles, setProfiles, groups, setGroups,
-  appData, setAppData, alertRules, setAlertRules
+  appData, setAppData, alertRules, setAlertRules, ssoConfig, setSsoConfig
 }) => {
     const [activeTab, setActiveTab] = useState('Perfis');
     
@@ -1855,6 +1957,10 @@ const SettingsPage = ({
                 return <DataManagementTab appData={appData} setAppData={setAppData} />;
             case 'Alertas':
                 return <AlertManagementTab alertRules={alertRules} setAlertRules={setAlertRules} allUsers={users} allGroups={groups} />;
+            case 'Notificações':
+                return <NotificationSettingsTab />;
+            case 'Autenticação':
+                return <AuthenticationSettingsTab ssoConfig={ssoConfig} setSsoConfig={setSsoConfig} />;
             default:
                 return null;
         }
@@ -1863,12 +1969,14 @@ const SettingsPage = ({
     return (
         <div className="p-6">
             <h1 className="text-xl font-bold mb-6">Configurações</h1>
-            <div className="flex border-b border-border-color mb-6">
+            <div className="flex border-b border-border-color mb-6 overflow-x-auto">
                 <TabButton text="Perfis" icon={UserCheck} active={activeTab === 'Perfis'} onClick={() => setActiveTab('Perfis')} />
                 <TabButton text="Grupos" icon={Users2} active={activeTab === 'Grupos'} onClick={() => setActiveTab('Grupos')} />
                 <TabButton text="Usuários" icon={Users} active={activeTab === 'Usuários'} onClick={() => setActiveTab('Usuários')} />
-                <TabButton text="Dados" icon={DatabaseZap} active={activeTab === 'Dados'} onClick={() => setActiveTab('Dados')} />
+                <TabButton text="Autenticação" icon={KeyRound} active={activeTab === 'Autenticação'} onClick={() => setActiveTab('Autenticação')} />
                 <TabButton text="Alertas" icon={Bell} active={activeTab === 'Alertas'} onClick={() => setActiveTab('Alertas')} />
+                <TabButton text="Notificações" icon={Mail} active={activeTab === 'Notificações'} onClick={() => setActiveTab('Notificações')} />
+                <TabButton text="Dados" icon={DatabaseZap} active={activeTab === 'Dados'} onClick={() => setActiveTab('Dados')} />
             </div>
             <div>{renderTabContent()}</div>
         </div>
@@ -1876,7 +1984,7 @@ const SettingsPage = ({
 };
 
 const TabButton = ({ text, icon: Icon, active, onClick }) => (
-    <button onClick={onClick} className={`flex items-center gap-2 py-2 px-4 -mb-px border-b-2 transition-colors ${active ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-primary'}`}>
+    <button onClick={onClick} className={`flex items-center gap-2 py-2 px-4 -mb-px border-b-2 transition-colors whitespace-nowrap ${active ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-primary'}`}>
         <Icon size={18} />
         <span className="font-semibold text-sm">{text}</span>
     </button>
@@ -2291,11 +2399,129 @@ const AlertManagementTab = ({ alertRules, setAlertRules, allUsers, allGroups }) 
     );
 };
 
+const NotificationSettingsTab = () => {
+    const [config, setConfig] = useState({
+        awsRegion: '', awsAccessKey: '', awsSecretKey: '', fromEmail: ''
+    });
+    const [testStatus, setTestStatus] = useState(null); // 'success', 'error', or null
+    const [isTesting, setIsTesting] = useState(false);
+
+    const handleChange = e => setConfig(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    
+    const handleTestConnection = () => {
+        setIsTesting(true);
+        setTestStatus(null);
+        // Simulate API call to backend
+        setTimeout(() => {
+            if (config.awsRegion && config.awsAccessKey && config.awsSecretKey && config.fromEmail) {
+                setTestStatus('success');
+            } else {
+                setTestStatus('error');
+            }
+            setIsTesting(false);
+        }, 1500);
+    };
+
+    return (
+        <div className="max-w-2xl mx-auto space-y-6">
+            <Card>
+                <h3 className="text-base font-semibold mb-1">Configuração de Envio de E-mail</h3>
+                <p className="text-xs text-text-secondary mb-4">Configure as credenciais do AWS Simple Email Service (SES) para notificações.</p>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-medium mb-1">Região da AWS</label>
+                        <input type="text" name="awsRegion" placeholder="us-east-1" value={config.awsRegion} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 text-sm" />
+                    </div>
+                     <div>
+                        <label className="block text-xs font-medium mb-1">Access Key ID</label>
+                        <input type="text" name="awsAccessKey" placeholder="AKIAIOSFODNN7EXAMPLE" value={config.awsAccessKey} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 text-sm" />
+                    </div>
+                     <div>
+                        <label className="block text-xs font-medium mb-1">Secret Access Key</label>
+                        <input type="password" name="awsSecretKey" placeholder="****************************************" value={config.awsSecretKey} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 text-sm" />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium mb-1">E-mail Remetente</label>
+                        <input type="email" name="fromEmail" placeholder="noreply@suaempresa.com" value={config.fromEmail} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 text-sm" />
+                    </div>
+                    <div className="flex justify-end gap-4 items-center">
+                         {testStatus === 'success' && <p className="text-sm text-green-400">Conexão bem-sucedida!</p>}
+                         {testStatus === 'error' && <p className="text-sm text-danger">Falha na conexão. Verifique os dados.</p>}
+                        <button onClick={handleTestConnection} disabled={isTesting} className="flex items-center justify-center gap-2 bg-surface hover:bg-surface/80 text-text-primary font-semibold py-2 px-4 rounded-lg text-sm disabled:opacity-50">
+                            {isTesting ? <><RefreshCw className="animate-spin" size={16}/> Testando...</> : 'Testar Conexão'}
+                        </button>
+                        <button className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm">Salvar Configurações</button>
+                    </div>
+                </div>
+            </Card>
+        </div>
+    );
+}
+
+// --- Login Page ---
+const LoginPage = ({ onLoginSuccess }) => {
+    const [isLoading, setIsLoading] = useState(false);
+    const [provider, setProvider] = useState(null);
+
+    const handleLogin = (prov) => {
+        setIsLoading(true);
+        setProvider(prov);
+        // Simulate API call and redirect for OAuth flow
+        setTimeout(() => {
+            // In a real app, this would be replaced by handling the OAuth callback.
+            // Here, we just mock a successful login with a predefined user.
+            const mockUser = initialUsers.find(u => u.id === 1); // Simulate logging in as Admin
+            onLoginSuccess(mockUser);
+        }, 2000);
+    };
+
+    return (
+        <div className="h-screen w-screen flex items-center justify-center bg-background">
+            <div className="w-full max-w-md p-8 space-y-8 bg-surface rounded-2xl shadow-lg">
+                <div className="text-center">
+                    <div className="flex justify-center mb-4">
+                        <div className="bg-primary p-3 rounded-xl">
+                            <Shield className="h-10 w-10 text-white" />
+                        </div>
+                    </div>
+                    <h1 className="text-2xl font-bold text-text-primary">Acessar EXA GRC</h1>
+                    <p className="text-sm text-text-secondary mt-2">Plataforma Integrada de Gestão de Riscos</p>
+                </div>
+                
+                <div className="space-y-4">
+                    <button 
+                        onClick={() => handleLogin('google')}
+                        disabled={isLoading}
+                        className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-background hover:bg-background/70 border border-border-color rounded-lg transition-colors disabled:opacity-50"
+                    >
+                        {isLoading && provider === 'google' ? <RefreshCw className="animate-spin" size={20} /> : 
+                            <svg className="w-5 h-5" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.8 2.66 30.3 0 24 0 14.62 0 6.81 5.44 3.06 13.11l7.69 6.01C12.33 13.72 17.7 9.5 24 9.5z"></path><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.42-4.55H24v9h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.26 5.6c4.24-3.89 6.64-9.61 6.64-16.23z"></path><path fill="#FBBC05" d="M10.75 28.73c-.22-.67-.35-1.37-.35-2.08s.13-1.41.35-2.08l-7.7-6.01C1.22 19.64 0 21.75 0 24s1.22 4.36 3.05 5.72l7.7-6.01z"></path><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.26-5.6c-2.11 1.43-4.81 2.29-7.63 2.29-6.31 0-11.67-4.22-13.67-9.91l-7.69 6.01C6.81 42.56 14.62 48 24 48z"></path><path fill="none" d="M0 0h48v48H0z"></path></svg>
+                        }
+                        <span className="font-semibold text-sm">{isLoading && provider === 'google' ? 'Autenticando...' : 'Entrar com Google Workspace'}</span>
+                    </button>
+                    
+                     <button 
+                        onClick={() => handleLogin('jumpcloud')}
+                        disabled={isLoading}
+                        className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-background hover:bg-background/70 border border-border-color rounded-lg transition-colors disabled:opacity-50"
+                    >
+                        {isLoading && provider === 'jumpcloud' ? <RefreshCw className="animate-spin" size={20} /> : <KeyRound size={20} /> }
+                        <span className="font-semibold text-sm">{isLoading && provider === 'jumpcloud' ? 'Redirecionando...' : 'Entrar com JumpCloud SSO'}</span>
+                    </button>
+                </div>
+                
+                <p className="text-center text-xs text-text-secondary pt-4">© {new Date().getFullYear()} EXA GRC. Todos os direitos reservados.</p>
+            </div>
+        </div>
+    );
+};
+
 
 // --- Main App Component ---
 
 const App = () => {
     const [activePage, setActivePage] = useState('Dashboard');
+    const [user, setUser] = useState(null);
     const [risks, setRisks] = useState(initialRisks);
     const [assets, setAssets] = useState(initialAssets);
     const [dataControls, setDataControls] = useState(mockDataControls);
@@ -2306,8 +2532,22 @@ const App = () => {
     const [obsolescenceItems, setObsolescenceItems] = useState(initialObsolescenceItems);
     const [alertRules, setAlertRules] = useState(initialAlertRules);
     const [highlightedItem, setHighlightedItem] = useState({ page: null, id: null });
+    const [ssoConfig, setSsoConfig] = useState({
+      google: { enabled: true, clientId: '', clientSecret: '' },
+      jumpcloud: { enabled: false, ssoUrl: '', entityId: '', certificate: '' }
+    });
+    
+    const handleLoginSuccess = (loggedInUser) => {
+        setUser(loggedInUser);
+    };
 
-    const currentUser = users.find(u => u.id === 1); // Simulating logged-in user
+    const handleLogout = () => {
+        setUser(null);
+    };
+    
+    if (!user) {
+        return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+    }
 
     const renderPage = () => {
         switch (activePage) {
@@ -2324,6 +2564,7 @@ const App = () => {
                             profiles={profiles} setProfiles={setProfiles}
                             groups={groups} setGroups={setGroups}
                             alertRules={alertRules} setAlertRules={setAlertRules}
+                            ssoConfig={ssoConfig} setSsoConfig={setSsoConfig}
                             appData={{ risks, assets, dataControls, complianceControls, obsolescenceItems }}
                             setAppData={{ setRisks, setAssets, setDataControls, setComplianceControls, setObsolescenceItems }}
                         />;
@@ -2333,7 +2574,7 @@ const App = () => {
 
     return (
         <div className="h-screen w-screen flex flex-col bg-background">
-            <Header user={currentUser} />
+            <Header user={user} onLogout={handleLogout} />
             <div className="flex flex-grow overflow-hidden">
                 <Sidebar activePage={activePage} setActivePage={setActivePage} />
                 <main className="flex-grow bg-background overflow-auto">
