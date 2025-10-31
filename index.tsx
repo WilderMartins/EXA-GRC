@@ -543,6 +543,152 @@ const RisksPage = () => {
     );
 };
 
+const AssetsPage = () => {
+    const { api } = useDb();
+    const addToast = useToast();
+    const [assets, setAssets] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingAsset, setEditingAsset] = useState(null);
+    const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+    useEffect(() => {
+        if (!api) return;
+        const unsubscribe = api.getAll('assets', (data) => {
+            setAssets(data);
+            setIsLoading(false);
+        });
+        return () => unsubscribe();
+    }, [api]);
+
+    const handleSaveAsset = async (formData) => {
+        try {
+            if (editingAsset) {
+                await api.update('assets', editingAsset.id, formData);
+                addToast('Ativo atualizado com sucesso!', 'success');
+            } else {
+                await api.create('assets', formData);
+                addToast('Ativo criado com sucesso!', 'success');
+            }
+            setIsModalOpen(false);
+            setEditingAsset(null);
+        } catch (error) {
+            console.error("Error saving asset:", error);
+            addToast('Falha ao salvar o ativo.', 'error');
+        }
+    };
+
+    const handleDeleteAsset = async (id) => {
+        try {
+            await api.remove('assets', id);
+            addToast('Ativo excluído com sucesso!', 'success');
+            setConfirmDeleteId(null);
+        } catch (error) {
+            console.error("Error deleting asset:", error);
+            addToast('Falha ao excluir o ativo.', 'error');
+        }
+    };
+
+    const AssetForm = ({ asset, onSave, onCancel }) => {
+        const [formData, setFormData] = useState(asset || {
+            name: '', type: '', owner: '', criticality: 'Medium'
+        });
+
+        const handleChange = (e) => {
+            const { name, value } = e.target;
+            setFormData(prev => ({ ...prev, [name]: value }));
+        };
+
+        const handleSubmit = (e) => {
+            e.preventDefault();
+            onSave(formData);
+        };
+
+        return (
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="Nome do Ativo" required className="w-full p-2 bg-background border border-border-color rounded-md" />
+                <input type="text" name="type" value={formData.type} onChange={handleChange} placeholder="Tipo (ex: Servidor, Banco de Dados)" required className="w-full p-2 bg-background border border-border-color rounded-md" />
+                <input type="text" name="owner" value={formData.owner} onChange={handleChange} placeholder="Responsável (ex: TI, Negócios)" required className="w-full p-2 bg-background border border-border-color rounded-md" />
+                <select name="criticality" value={formData.criticality} onChange={handleChange} required className="w-full p-2 bg-background border border-border-color rounded-md">
+                    <option>Low</option><option>Medium</option><option>High</option><option>Critical</option>
+                </select>
+                <div className="flex justify-end gap-4 pt-4">
+                    <button type="button" onClick={onCancel} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-700 text-white">Cancelar</button>
+                    <button type="submit" className="px-4 py-2 rounded-md bg-primary hover:bg-blue-700 text-white">Salvar</button>
+                </div>
+            </form>
+        );
+    };
+
+    return (
+        <div>
+            <div className="flex justify-between items-center mb-6">
+                <h1 className="text-3xl font-bold text-text-primary">Gestão de Ativos</h1>
+                <button onClick={() => { setEditingAsset(null); setIsModalOpen(true); }} className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary hover:bg-blue-700 text-white transition-colors">
+                    <Icon name="PlusCircle" size={20} />
+                    <span>Novo Ativo</span>
+                </button>
+            </div>
+
+            <div className="bg-surface rounded-lg border border-border-color overflow-hidden">
+                {isLoading ? (
+                    <div className="p-16 flex justify-center"><Spinner /></div>
+                ) : assets.length === 0 ? (
+                    <EmptyState
+                        title="Nenhum Ativo Cadastrado"
+                        message="Comece adicionando um novo ativo para poder vinculá-lo a riscos."
+                        action={
+                            <button onClick={() => { setEditingAsset(null); setIsModalOpen(true); }} className="flex items-center gap-2 mx-auto px-4 py-2 rounded-md bg-primary hover:bg-blue-700 text-white transition-colors">
+                                <Icon name="PlusCircle" size={20} />
+                                <span>Adicionar Ativo</span>
+                            </button>
+                        }
+                    />
+                ) : (
+                    <table className="w-full text-left">
+                        <thead className="bg-gray-800">
+                            <tr>
+                                <th className="p-4">Nome</th>
+                                <th>Tipo</th>
+                                <th>Responsável</th>
+                                <th>Criticidade</th>
+                                <th className="w-28">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {assets.map(asset => (
+                                <tr key={asset.id} className="border-b border-border-color hover:bg-gray-800">
+                                    <td className="p-4 font-medium">{asset.name}</td>
+                                    <td>{asset.type}</td>
+                                    <td>{asset.owner}</td>
+                                    <td><span className={`px-2 py-1 text-xs font-bold rounded-full text-white bg-risk-${asset.criticality?.toLowerCase()}`}>{asset.criticality}</span></td>
+                                    <td className="p-4 flex gap-2">
+                                        <button onClick={() => { setEditingAsset(asset); setIsModalOpen(true); }} className="p-2 text-text-secondary hover:text-primary"><Icon name="Edit" size={18} /></button>
+                                        <button onClick={() => setConfirmDeleteId(asset.id)} className="p-2 text-text-secondary hover:text-danger"><Icon name="Trash2" size={18} /></button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
+            </div>
+
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingAsset ? 'Editar Ativo' : 'Novo Ativo'}>
+                <AssetForm asset={editingAsset} onSave={handleSaveAsset} onCancel={() => setIsModalOpen(false)} />
+            </Modal>
+
+            <ConfirmModal
+                isOpen={!!confirmDeleteId}
+                onClose={() => setConfirmDeleteId(null)}
+                onConfirm={() => handleDeleteAsset(confirmDeleteId)}
+                title="Confirmar Exclusão"
+                message="Você tem certeza que deseja excluir este ativo? Esta ação não pode ser desfeita."
+            />
+        </div>
+    );
+};
+
+
 const SettingsPage = () => {
     const addToast = useToast();
     const [apiKey, setApiKey] = useState(localStorage.getItem('geminiApiKey') || '');
@@ -582,6 +728,421 @@ const SettingsPage = () => {
     );
 };
 
+const ThreatsPage = () => {
+    const { api } = useDb();
+    const addToast = useToast();
+    const [threats, setThreats] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingThreat, setEditingThreat] = useState(null);
+    const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+    useEffect(() => {
+        if (!api) return;
+        const unsubscribe = api.getAll('threats', (data) => {
+            setThreats(data);
+            setIsLoading(false);
+        });
+        return () => unsubscribe();
+    }, [api]);
+
+    const handleSaveThreat = async (formData) => {
+        try {
+            if (editingThreat) {
+                await api.update('threats', editingThreat.id, formData);
+                addToast('Ameaça atualizada com sucesso!', 'success');
+            } else {
+                await api.create('threats', formData);
+                addToast('Ameaça criada com sucesso!', 'success');
+            }
+            setIsModalOpen(false);
+            setEditingThreat(null);
+        } catch (error) {
+            console.error("Error saving threat:", error);
+            addToast('Falha ao salvar a ameaça.', 'error');
+        }
+    };
+
+    const handleDeleteThreat = async (id) => {
+        try {
+            await api.remove('threats', id);
+            addToast('Ameaça excluída com sucesso!', 'success');
+            setConfirmDeleteId(null);
+        } catch (error) {
+            console.error("Error deleting threat:", error);
+            addToast('Falha ao excluir a ameaça.', 'error');
+        }
+    };
+
+    const ThreatForm = ({ threat, onSave, onCancel }) => {
+        const [formData, setFormData] = useState(threat || {
+            name: '', description: '', type: 'Malicious'
+        });
+
+        const handleChange = (e) => {
+            const { name, value } = e.target;
+            setFormData(prev => ({ ...prev, [name]: value }));
+        };
+
+        const handleSubmit = (e) => {
+            e.preventDefault();
+            onSave(formData);
+        };
+
+        return (
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="Nome da Ameaça" required className="w-full p-2 bg-background border border-border-color rounded-md" />
+                <textarea name="description" value={formData.description} onChange={handleChange} placeholder="Descrição" required rows="4" className="w-full p-2 bg-background border border-border-color rounded-md" />
+                <select name="type" value={formData.type} onChange={handleChange} required className="w-full p-2 bg-background border border-border-color rounded-md">
+                    <option>Malicious</option><option>Accidental</option><option>Environmental</option>
+                </select>
+                <div className="flex justify-end gap-4 pt-4">
+                    <button type="button" onClick={onCancel} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-700 text-white">Cancelar</button>
+                    <button type="submit" className="px-4 py-2 rounded-md bg-primary hover:bg-blue-700 text-white">Salvar</button>
+                </div>
+            </form>
+        );
+    };
+
+    return (
+        <div>
+            <div className="flex justify-between items-center mb-6">
+                <h1 className="text-3xl font-bold text-text-primary">Gestão de Ameaças</h1>
+                <button onClick={() => { setEditingThreat(null); setIsModalOpen(true); }} className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary hover:bg-blue-700 text-white transition-colors">
+                    <Icon name="PlusCircle" size={20} />
+                    <span>Nova Ameaça</span>
+                </button>
+            </div>
+
+            <div className="bg-surface rounded-lg border border-border-color overflow-hidden">
+                {isLoading ? (
+                    <div className="p-16 flex justify-center"><Spinner /></div>
+                ) : threats.length === 0 ? (
+                    <EmptyState
+                        title="Nenhuma Ameaça Cadastrada"
+                        message="Comece adicionando uma nova ameaça para poder vinculá-la a riscos."
+                        action={
+                            <button onClick={() => { setEditingThreat(null); setIsModalOpen(true); }} className="flex items-center gap-2 mx-auto px-4 py-2 rounded-md bg-primary hover:bg-blue-700 text-white transition-colors">
+                                <Icon name="PlusCircle" size={20} />
+                                <span>Adicionar Ameaça</span>
+                            </button>
+                        }
+                    />
+                ) : (
+                    <table className="w-full text-left">
+                        <thead className="bg-gray-800">
+                            <tr>
+                                <th className="p-4">Nome</th>
+                                <th>Descrição</th>
+                                <th>Tipo</th>
+                                <th className="w-28">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {threats.map(threat => (
+                                <tr key={threat.id} className="border-b border-border-color hover:bg-gray-800">
+                                    <td className="p-4 font-medium">{threat.name}</td>
+                                    <td className="text-sm text-text-secondary max-w-md truncate">{threat.description}</td>
+                                    <td><span className="px-2 py-1 text-xs font-semibold rounded-full bg-gray-700 text-gray-300">{threat.type}</span></td>
+                                    <td className="p-4 flex gap-2">
+                                        <button onClick={() => { setEditingThreat(threat); setIsModalOpen(true); }} className="p-2 text-text-secondary hover:text-primary"><Icon name="Edit" size={18} /></button>
+                                        <button onClick={() => setConfirmDeleteId(threat.id)} className="p-2 text-text-secondary hover:text-danger"><Icon name="Trash2" size={18} /></button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
+            </div>
+
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingThreat ? 'Editar Ameaça' : 'Nova Ameaça'}>
+                <ThreatForm threat={editingThreat} onSave={handleSaveThreat} onCancel={() => setIsModalOpen(false)} />
+            </Modal>
+
+            <ConfirmModal
+                isOpen={!!confirmDeleteId}
+                onClose={() => setConfirmDeleteId(null)}
+                onConfirm={() => handleDeleteThreat(confirmDeleteId)}
+                title="Confirmar Exclusão"
+                message="Você tem certeza que deseja excluir esta ameaça? Esta ação não pode ser desfeita."
+            />
+        </div>
+    );
+};
+
+const ControlsPage = () => {
+    const { api } = useDb();
+    const addToast = useToast();
+    const [controls, setControls] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingControl, setEditingControl] = useState(null);
+    const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+    useEffect(() => {
+        if (!api) return;
+        const unsubscribe = api.getAll('controls', (data) => {
+            setControls(data);
+            setIsLoading(false);
+        });
+        return () => unsubscribe();
+    }, [api]);
+
+    const handleSaveControl = async (formData) => {
+        try {
+            if (editingControl) {
+                await api.update('controls', editingControl.id, formData);
+                addToast('Controle atualizado com sucesso!', 'success');
+            } else {
+                await api.create('controls', formData);
+                addToast('Controle criado com sucesso!', 'success');
+            }
+            setIsModalOpen(false);
+            setEditingControl(null);
+        } catch (error) {
+            console.error("Error saving control:", error);
+            addToast('Falha ao salvar o controle.', 'error');
+        }
+    };
+
+    const handleDeleteControl = async (id) => {
+        try {
+            await api.remove('controls', id);
+            addToast('Controle excluído com sucesso!', 'success');
+            setConfirmDeleteId(null);
+        } catch (error) {
+            console.error("Error deleting control:", error);
+            addToast('Falha ao excluir o controle.', 'error');
+        }
+    };
+
+    const ControlForm = ({ control, onSave, onCancel }) => {
+        const [formData, setFormData] = useState(control || {
+            name: '', description: '', family: '', framework: 'NIST CSF'
+        });
+
+        const handleChange = (e) => {
+            const { name, value } = e.target;
+            setFormData(prev => ({ ...prev, [name]: value }));
+        };
+
+        const handleSubmit = (e) => {
+            e.preventDefault();
+            onSave(formData);
+        };
+
+        return (
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="Nome do Controle" required className="w-full p-2 bg-background border border-border-color rounded-md" />
+                <textarea name="description" value={formData.description} onChange={handleChange} placeholder="Descrição" required rows="4" className="w-full p-2 bg-background border border-border-color rounded-md" />
+                <input type="text" name="family" value={formData.family} onChange={handleChange} placeholder="Família (ex: Acesso, Criptografia)" required className="w-full p-2 bg-background border border-border-color rounded-md" />
+                <select name="framework" value={formData.framework} onChange={handleChange} required className="w-full p-2 bg-background border border-border-color rounded-md">
+                    <option>NIST CSF</option><option>CIS Controls</option>
+                </select>
+                <div className="flex justify-end gap-4 pt-4">
+                    <button type="button" onClick={onCancel} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-700 text-white">Cancelar</button>
+                    <button type="submit" className="px-4 py-2 rounded-md bg-primary hover:bg-blue-700 text-white">Salvar</button>
+                </div>
+            </form>
+        );
+    };
+
+    return (
+        <div>
+            <div className="flex justify-between items-center mb-6">
+                <h1 className="text-3xl font-bold text-text-primary">Gestão de Controles</h1>
+                <button onClick={() => { setEditingControl(null); setIsModalOpen(true); }} className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary hover:bg-blue-700 text-white transition-colors">
+                    <Icon name="PlusCircle" size={20} />
+                    <span>Novo Controle</span>
+                </button>
+            </div>
+
+            <div className="bg-surface rounded-lg border border-border-color overflow-hidden">
+                {isLoading ? (
+                    <div className="p-16 flex justify-center"><Spinner /></div>
+                ) : controls.length === 0 ? (
+                    <EmptyState
+                        title="Nenhum Controle Cadastrado"
+                        message="Comece adicionando um novo controle para poder vinculá-lo a riscos."
+                        action={
+                            <button onClick={() => { setEditingControl(null); setIsModalOpen(true); }} className="flex items-center gap-2 mx-auto px-4 py-2 rounded-md bg-primary hover:bg-blue-700 text-white transition-colors">
+                                <Icon name="PlusCircle" size={20} />
+                                <span>Adicionar Controle</span>
+                            </button>
+                        }
+                    />
+                ) : (
+                    <table className="w-full text-left">
+                        <thead className="bg-gray-800">
+                            <tr>
+                                <th className="p-4">Nome</th>
+                                <th>Framework</th>
+                                <th>Família</th>
+                                <th className="w-28">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {controls.map(control => (
+                                <tr key={control.id} className="border-b border-border-color hover:bg-gray-800">
+                                    <td className="p-4 font-medium">{control.name}</td>
+                                    <td>{control.framework}</td>
+                                    <td>{control.family}</td>
+                                    <td className="p-4 flex gap-2">
+                                        <button onClick={() => { setEditingControl(control); setIsModalOpen(true); }} className="p-2 text-text-secondary hover:text-primary"><Icon name="Edit" size={18} /></button>
+                                        <button onClick={() => setConfirmDeleteId(control.id)} className="p-2 text-text-secondary hover:text-danger"><Icon name="Trash2" size={18} /></button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
+            </div>
+
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingControl ? 'Editar Controle' : 'Novo Controle'}>
+                <ControlForm control={editingControl} onSave={handleSaveControl} onCancel={() => setIsModalOpen(false)} />
+            </Modal>
+
+            <ConfirmModal
+                isOpen={!!confirmDeleteId}
+                onClose={() => setConfirmDeleteId(null)}
+                onConfirm={() => handleDeleteControl(confirmDeleteId)}
+                title="Confirmar Exclusão"
+                message="Você tem certeza que deseja excluir este controle? Esta ação não pode ser desfeita."
+            />
+        </div>
+    );
+};
+
+const UsersPage = () => {
+    const { api } = useDb();
+    const addToast = useToast();
+    const [users, setUsers] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingUser, setEditingUser] = useState(null);
+    const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+    useEffect(() => {
+        if (!api) return;
+        const unsubscribe = api.getAll('users', (data) => {
+            setUsers(data);
+            setIsLoading(false);
+        });
+        return () => unsubscribe();
+    }, [api]);
+
+    // NOTE: User CREATION is complex client-side as it requires creating auth user and firestore doc.
+    // This is a simplified version. A robust solution would use a Cloud Function.
+    const handleSaveUser = async (formData) => {
+        addToast('A criação e edição de usuários não está implementada no front-end por razões de segurança.', 'info');
+        setIsModalOpen(false);
+    };
+
+    // NOTE: User DELETION is not possible from the client-side SDK for other users.
+    // It requires the Firebase Admin SDK in a backend environment (e.g., Cloud Function).
+    const handleDeleteUser = async (id) => {
+        addToast('A exclusão de usuários deve ser feita em um ambiente de back-end seguro.', 'error');
+        setConfirmDeleteId(null);
+    };
+
+    const UserForm = ({ user, onSave, onCancel }) => {
+        const [formData, setFormData] = useState(user || {
+            name: '', email: '', role: 'Analyst'
+        });
+
+        const handleChange = (e) => {
+            const { name, value } = e.target;
+            setFormData(prev => ({ ...prev, [name]: value }));
+        };
+
+        const handleSubmit = (e) => {
+            e.preventDefault();
+            onSave(formData);
+        };
+
+        return (
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="Nome Completo" required className="w-full p-2 bg-background border border-border-color rounded-md" />
+                <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="Email" required className="w-full p-2 bg-background border border-border-color rounded-md" />
+                {/* Simplified password field for creation, not ideal UX */}
+                {!user && <input type="password" name="password" placeholder="Senha" required className="w-full p-2 bg-background border border-border-color rounded-md" />}
+                <select name="role" value={formData.role} onChange={handleChange} required className="w-full p-2 bg-background border border-border-color rounded-md">
+                    <option>Analyst</option><option>Admin</option>
+                </select>
+                <div className="flex justify-end gap-4 pt-4">
+                    <button type="button" onClick={onCancel} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-700 text-white">Cancelar</button>
+                    <button type="submit" className="px-4 py-2 rounded-md bg-primary hover:bg-blue-700 text-white">Salvar</button>
+                </div>
+            </form>
+        );
+    };
+
+    return (
+        <div>
+            <div className="flex justify-between items-center mb-6">
+                <h1 className="text-3xl font-bold text-text-primary">Gestão de Usuários</h1>
+                <button onClick={() => { setEditingUser(null); setIsModalOpen(true); }} className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary hover:bg-blue-700 text-white transition-colors">
+                    <Icon name="PlusCircle" size={20} />
+                    <span>Novo Usuário</span>
+                </button>
+            </div>
+
+            <div className="bg-surface rounded-lg border border-border-color overflow-hidden">
+                {isLoading ? (
+                    <div className="p-16 flex justify-center"><Spinner /></div>
+                ) : users.length === 0 ? (
+                    <EmptyState
+                        title="Nenhum Usuário Encontrado"
+                        message="Comece adicionando um novo usuário."
+                        action={
+                            <button onClick={() => { setEditingUser(null); setIsModalOpen(true); }} className="flex items-center gap-2 mx-auto px-4 py-2 rounded-md bg-primary hover:bg-blue-700 text-white transition-colors">
+                                <Icon name="PlusCircle" size={20} />
+                                <span>Adicionar Usuário</span>
+                            </button>
+                        }
+                    />
+                ) : (
+                    <table className="w-full text-left">
+                        <thead className="bg-gray-800">
+                            <tr>
+                                <th className="p-4">Nome</th>
+                                <th>Email</th>
+                                <th>Função</th>
+                                <th className="w-28">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {users.map(user => (
+                                <tr key={user.id} className="border-b border-border-color hover:bg-gray-800">
+                                    <td className="p-4 font-medium">{user.name}</td>
+                                    <td>{user.email}</td>
+                                    <td><span className={`px-2 py-1 text-xs font-bold rounded-full ${user.role === 'Admin' ? 'bg-primary text-white' : 'bg-gray-700 text-gray-300'}`}>{user.role}</span></td>
+                                    <td className="p-4 flex gap-2">
+                                        <button onClick={() => { setEditingUser(user); setIsModalOpen(true); }} className="p-2 text-text-secondary hover:text-primary"><Icon name="Edit" size={18} /></button>
+                                        <button onClick={() => setConfirmDeleteId(user.id)} className="p-2 text-text-secondary hover:text-danger"><Icon name="Trash2" size={18} /></button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
+            </div>
+
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingUser ? 'Editar Usuário' : 'Novo Usuário'}>
+                <UserForm user={editingUser} onSave={handleSaveUser} onCancel={() => setIsModalOpen(false)} />
+            </Modal>
+
+            <ConfirmModal
+                isOpen={!!confirmDeleteId}
+                onClose={() => setConfirmDeleteId(null)}
+                onConfirm={() => handleDeleteUser(confirmDeleteId)}
+                title="Confirmar Exclusão"
+                message="Você tem certeza que deseja excluir este usuário? Esta ação não pode ser desfeita e é irreversível."
+            />
+        </div>
+    );
+};
+
 const PlaceholderPage = ({ title }) => (
   <div>
     <h1 className="text-3xl font-bold text-text-primary mb-6">{title}</h1>
@@ -604,10 +1165,10 @@ const Router = () => {
   const routes = {
     '#/': <Dashboard />,
     '#/risks': <RisksPage />,
-    '#/assets': <PlaceholderPage title="Ativos" />,
-    '#/threats': <PlaceholderPage title="Ameaças" />,
-    '#/controls': <PlaceholderPage title="Controles" />,
-    '#/users': <PlaceholderPage title="Usuários" />,
+    '#/assets': <AssetsPage />,
+    '#/threats': <ThreatsPage />,
+    '#/controls': <ControlsPage />,
+    '#/users': <UsersPage />,
     '#/settings': <SettingsPage />,
   };
   
