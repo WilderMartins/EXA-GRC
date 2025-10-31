@@ -171,7 +171,7 @@ const initialRisks: Risk[] = [
     { id: 3, creationDate: '2023-11-01T09:00:00Z', title: 'Indisponibilidade do e-commerce', description: 'Uma falha de hardware no servidor principal pode causar a interrupção das vendas online.', probability: 2, impact: 5, status: RiskStatus.Mitigated, owner: 'Equipe de Infra', dueDate: '2024-01-15', type: RiskType.Operational, sla: 15, planResponsible: 'Pedro Martins', technicalResponsible: 'Pedro Martins', actionPlan: 'Configurar cluster de alta disponibilidade para os servidores web.', completionDate: '2024-01-10', },
 ];
 
-const mockDataControls: DataControl[] = [
+const initialDataControls: DataControl[] = [
     { id: 1, name: 'Política de Retenção de Dados', description: 'Define por quanto tempo os dados pessoais são mantidos.', category: 'Políticas de Dados', relatedRegulation: 'LGPD Art. 15', status: DataControlStatus.Active, criticality: AssetCriticality.High, owner: 'DPO' },
     { id: 2, name: 'Processo de Requisição de Titular', description: 'Procedimento para atender às solicitações de direitos dos titulares de dados.', category: 'Direitos dos Titulares', relatedRegulation: 'LGPD Art. 18', status: DataControlStatus.Active, criticality: AssetCriticality.Medium, owner: 'Equipe de Privacidade' },
 ];
@@ -191,7 +191,7 @@ const initialObsolescenceItems: ObsolescenceItem[] = [
 ];
 
 // --- COMPREHENSIVE CONTROLS DATABASE ---
-const allControls: Control[] = [
+const initialControls: Control[] = [
     // LGPD Controls
     { id: 'LGPD-Art.6-VII', framework: FrameworkName.LGPD, family: 'Princípios', name: 'Segurança', description: 'Utilizar medidas técnicas e administrativas aptas a proteger os dados pessoais de acessos não autorizados.', status: ControlStatus.FullyImplemented },
     { id: 'LGPD-Art.46', framework: FrameworkName.LGPD, family: 'Segurança', name: 'Medidas de Segurança', description: 'Adotar medidas de segurança, técnicas e administrativas para proteger os dados pessoais.', status: ControlStatus.PartiallyImplemented },
@@ -244,20 +244,20 @@ const apiClient = {
     _latency: 500,
     _db: {
         risks: JSON.parse(JSON.stringify(initialRisks)) as Risk[],
+        assets: JSON.parse(JSON.stringify(initialAssets)) as Asset[],
+        obsolescenceItems: JSON.parse(JSON.stringify(initialObsolescenceItems)) as ObsolescenceItem[],
+        dataControls: JSON.parse(JSON.stringify(initialDataControls)) as DataControl[],
+        complianceControls: JSON.parse(JSON.stringify(initialControls)) as Control[],
     },
+    // Risks
     async getRisks(): Promise<Risk[]> {
         await new Promise(res => setTimeout(res, this._latency));
-        // if (Math.random() > 0.8) throw new Error("Network Error"); // Simulate random error
         return JSON.parse(JSON.stringify(this._db.risks));
     },
     async createRisk(riskData: Omit<Risk, 'id' | 'creationDate'>): Promise<Risk> {
         await new Promise(res => setTimeout(res, this._latency + 200));
         const maxId = this._db.risks.reduce((max, r) => Math.max(r.id, max), 0);
-        const newRisk: Risk = {
-            ...riskData,
-            id: maxId + 1,
-            creationDate: new Date().toISOString()
-        };
+        const newRisk: Risk = { ...riskData, id: maxId + 1, creationDate: new Date().toISOString() };
         this._db.risks.push(newRisk);
         return JSON.parse(JSON.stringify(newRisk));
     },
@@ -275,9 +275,98 @@ const apiClient = {
         if (this._db.risks.length === initialLength) throw new Error("Risk not found");
         return { id: riskId };
     },
+    // Assets
+    async getAssets(): Promise<Asset[]> {
+        await new Promise(res => setTimeout(res, this._latency));
+        return JSON.parse(JSON.stringify(this._db.assets));
+    },
+    async createAsset(assetData: Omit<Asset, 'id'>): Promise<Asset> {
+        await new Promise(res => setTimeout(res, this._latency));
+        const maxId = this._db.assets.reduce((max, a) => Math.max(a.id, max), 0);
+        const newAsset: Asset = { ...assetData, id: maxId + 1 };
+        this._db.assets.push(newAsset);
+        return JSON.parse(JSON.stringify(newAsset));
+    },
+    async updateAsset(assetData: Asset): Promise<Asset> {
+        await new Promise(res => setTimeout(res, this._latency));
+        const index = this._db.assets.findIndex(a => a.id === assetData.id);
+        if (index === -1) throw new Error("Asset not found");
+        this._db.assets[index] = assetData;
+        return JSON.parse(JSON.stringify(assetData));
+    },
+    async deleteAsset(assetId: number): Promise<{ id: number }> {
+        await new Promise(res => setTimeout(res, this._latency));
+        this._db.assets = this._db.assets.filter(a => a.id !== assetId);
+        return { id: assetId };
+    },
+    // Obsolescence
+    async getObsolescenceItems(): Promise<ObsolescenceItem[]> {
+        await new Promise(res => setTimeout(res, this._latency));
+        return JSON.parse(JSON.stringify(this._db.obsolescenceItems));
+    },
+    async createObsolescenceItem(itemData: Omit<ObsolescenceItem, 'id'>): Promise<ObsolescenceItem> {
+        await new Promise(res => setTimeout(res, this._latency));
+        const maxId = this._db.obsolescenceItems.reduce((max, i) => Math.max(i.id, max), 0);
+        const newItem: ObsolescenceItem = { ...itemData, id: maxId + 1 };
+        this._db.obsolescenceItems.push(newItem);
+        return JSON.parse(JSON.stringify(newItem));
+    },
+    async updateObsolescenceItem(itemData: ObsolescenceItem): Promise<ObsolescenceItem> {
+        await new Promise(res => setTimeout(res, this._latency));
+        const index = this._db.obsolescenceItems.findIndex(i => i.id === itemData.id);
+        if (index === -1) throw new Error("Item not found");
+        this._db.obsolescenceItems[index] = itemData;
+        return JSON.parse(JSON.stringify(itemData));
+    },
+    async deleteObsolescenceItem(itemId: number): Promise<{ id: number }> {
+        await new Promise(res => setTimeout(res, this._latency));
+        this._db.obsolescenceItems = this._db.obsolescenceItems.filter(i => i.id !== itemId);
+        return { id: itemId };
+    },
+    // Data Controls
+    async getDataControls(): Promise<DataControl[]> {
+        await new Promise(res => setTimeout(res, this._latency));
+        return JSON.parse(JSON.stringify(this._db.dataControls));
+    },
+    async createDataControl(controlData: Omit<DataControl, 'id'>): Promise<DataControl> {
+        await new Promise(res => setTimeout(res, this._latency));
+        const maxId = this._db.dataControls.reduce((max, c) => Math.max(c.id, max), 0);
+        const newControl: DataControl = { ...controlData, id: maxId + 1 };
+        this._db.dataControls.push(newControl);
+        return JSON.parse(JSON.stringify(newControl));
+    },
+    async updateDataControl(controlData: DataControl): Promise<DataControl> {
+        await new Promise(res => setTimeout(res, this._latency));
+        const index = this._db.dataControls.findIndex(c => c.id === controlData.id);
+        if (index === -1) throw new Error("Data Control not found");
+        this._db.dataControls[index] = controlData;
+        return JSON.parse(JSON.stringify(controlData));
+    },
+    async deleteDataControl(controlId: number): Promise<{ id: number }> {
+        await new Promise(res => setTimeout(res, this._latency));
+        this._db.dataControls = this._db.dataControls.filter(c => c.id !== controlId);
+        return { id: controlId };
+    },
+    // Compliance Controls
+    async getComplianceControls(): Promise<Control[]> {
+        await new Promise(res => setTimeout(res, this._latency));
+        return JSON.parse(JSON.stringify(this._db.complianceControls));
+    },
+    async updateComplianceControl(controlData: Control): Promise<Control> {
+        await new Promise(res => setTimeout(res, this._latency));
+        const index = this._db.complianceControls.findIndex(c => c.id === controlData.id);
+        if (index === -1) throw new Error("Compliance Control not found");
+        this._db.complianceControls[index] = controlData;
+        return JSON.parse(JSON.stringify(controlData));
+    },
+    // Data Management
     async resetData(): Promise<void> {
         await new Promise(res => setTimeout(res, this._latency));
         this._db.risks = JSON.parse(JSON.stringify(initialRisks));
+        this._db.assets = JSON.parse(JSON.stringify(initialAssets));
+        this._db.obsolescenceItems = JSON.parse(JSON.stringify(initialObsolescenceItems));
+        this._db.dataControls = JSON.parse(JSON.stringify(initialDataControls));
+        this._db.complianceControls = JSON.parse(JSON.stringify(initialControls));
     }
 };
 
@@ -487,9 +576,24 @@ const CircularProgress = ({ percentage, color, size = 100 }) => {
     );
 };
 
+const SkeletonLoader: React.FC<{ rows?: number; cols?: number; }> = ({ rows = 5, cols = 8 }) => {
+    return (
+         <>
+            {Array.from({ length: rows }).map((_, i) => (
+                 <tr key={i} className="border-t border-border-color">
+                    {Array.from({ length: cols }).map((_, j) => (
+                        <td key={j} className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
+                    ))}
+                </tr>
+            ))}
+        </>
+    );
+};
 
-const MaturityAndComplianceScores = ({ controls }) => {
+
+const MaturityAndComplianceScores = ({ isLoading, controls }) => {
     const summary = useMemo(() => {
+        if (!controls) return null;
         const initial = {
             [FrameworkName.NIST]: { total: 0, fully: 0, scores: [] as number[] },
             [FrameworkName.CIS]: { total: 0, fully: 0, scores: [] as number[] },
@@ -517,6 +621,22 @@ const MaturityAndComplianceScores = ({ controls }) => {
         }
         return results;
     }, [controls]);
+
+    if (isLoading || !summary) {
+        return (
+            <Card className="lg:col-span-4">
+                <div className="h-4 w-1/3 bg-surface/50 rounded animate-pulse mb-4"></div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                        <div key={i} className="bg-background/50 p-4 rounded-lg flex flex-col items-center">
+                             <div className="h-4 w-20 bg-surface/50 rounded animate-pulse mb-3"></div>
+                             <div className="h-32 w-full bg-surface/50 rounded animate-pulse"></div>
+                        </div>
+                    ))}
+                </div>
+            </Card>
+        );
+    }
 
     return (
         <Card className="lg:col-span-4">
@@ -595,8 +715,9 @@ const RiskByTypeChart = ({ risks }) => {
     );
 };
 
-const ObsolescenceDashboardCard = ({ items }) => {
+const ObsolescenceDashboardCard = ({ isLoading, items }) => {
     const summary = useMemo(() => {
+        if (!items) return null;
         const today = new Date();
         const obsoleteItems = items.filter(item => new Date(item.endOfSupportDate) < today);
         const totalItems = items.length;
@@ -614,6 +735,18 @@ const ObsolescenceDashboardCard = ({ items }) => {
         
         return { overallPercentage, byCategory };
     }, [items]);
+    
+    if (isLoading || !summary) {
+        return (
+            <Card>
+                <div className="h-4 w-2/3 bg-surface/50 rounded animate-pulse mb-4"></div>
+                <div className="flex flex-col gap-6">
+                    <div className="h-32 w-full bg-surface/50 rounded animate-pulse"></div>
+                    <div className="h-40 w-full bg-surface/50 rounded animate-pulse"></div>
+                </div>
+            </Card>
+        );
+    }
     
     return (
         <Card>
@@ -656,28 +789,36 @@ const ObsolescenceDashboardCard = ({ items }) => {
 };
 
 
-const DashboardPage = ({ controls, obsolescenceItems }) => {
-    const [risks, setRisks] = useState<Risk[]>([]);
+const DashboardPage = () => {
+    const [risks, setRisks] = useState<Risk[] | null>(null);
+    const [controls, setControls] = useState<Control[] | null>(null);
+    const [obsolescenceItems, setObsolescenceItems] = useState<ObsolescenceItem[] | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const toast = useToast();
 
     useEffect(() => {
-        const fetchRisks = async () => {
+        const fetchDashboardData = async () => {
             try {
                 setIsLoading(true);
-                setError(null);
-                const fetchedRisks = await apiClient.getRisks();
+                const [fetchedRisks, fetchedControls, fetchedObsolescenceItems] = await Promise.all([
+                    apiClient.getRisks(),
+                    apiClient.getComplianceControls(),
+                    apiClient.getObsolescenceItems()
+                ]);
                 setRisks(fetchedRisks);
+                setControls(fetchedControls);
+                setObsolescenceItems(fetchedObsolescenceItems);
             } catch (err) {
-                setError('Falha ao carregar os dados de riscos.');
+                toast.addToast('Falha ao carregar os dados do dashboard.', 'error');
             } finally {
                 setIsLoading(false);
             }
         };
-        fetchRisks();
-    }, []);
+        fetchDashboardData();
+    }, [toast]);
 
     const riskStatusCounts = useMemo(() => {
+        if (!risks) return null;
         const initialCounts = Object.values(RiskStatus).reduce((acc, status) => {
             acc[status] = 0;
             return acc;
@@ -691,25 +832,25 @@ const DashboardPage = ({ controls, obsolescenceItems }) => {
 
     return (
         <div className="p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <Card className="lg:col-span-1 bg-gradient-to-br from-red-500 to-danger"><h3 className="text-base font-semibold">Riscos Abertos</h3><p className="text-3xl font-bold">{isLoading ? '...' : riskStatusCounts[RiskStatus.Open]}</p></Card>
-            <Card className="lg:col-span-1 bg-gradient-to-br from-yellow-500 to-orange-500"><h3 className="text-base font-semibold">Em Andamento</h3><p className="text-3xl font-bold">{isLoading ? '...' : riskStatusCounts[RiskStatus.InProgress]}</p></Card>
-            <Card className="lg:col-span-1 bg-gradient-to-br from-green-500 to-secondary"><h3 className="text-base font-semibold">Riscos Mitigados</h3><p className="text-3xl font-bold">{isLoading ? '...' : riskStatusCounts[RiskStatus.Mitigated]}</p></Card>
-            <Card className="lg:col-span-1 bg-gradient-to-br from-blue-500 to-primary"><h3 className="text-base font-semibold">Riscos Aceitos</h3><p className="text-3xl font-bold">{isLoading ? '...' : riskStatusCounts[RiskStatus.Accepted]}</p></Card>
+            <Card className="lg:col-span-1 bg-gradient-to-br from-red-500 to-danger"><h3 className="text-base font-semibold">Riscos Abertos</h3><p className="text-3xl font-bold">{isLoading ? '...' : riskStatusCounts?.[RiskStatus.Open]}</p></Card>
+            <Card className="lg:col-span-1 bg-gradient-to-br from-yellow-500 to-orange-500"><h3 className="text-base font-semibold">Em Andamento</h3><p className="text-3xl font-bold">{isLoading ? '...' : riskStatusCounts?.[RiskStatus.InProgress]}</p></Card>
+            <Card className="lg:col-span-1 bg-gradient-to-br from-green-500 to-secondary"><h3 className="text-base font-semibold">Riscos Mitigados</h3><p className="text-3xl font-bold">{isLoading ? '...' : riskStatusCounts?.[RiskStatus.Mitigated]}</p></Card>
+            <Card className="lg:col-span-1 bg-gradient-to-br from-blue-500 to-primary"><h3 className="text-base font-semibold">Riscos Aceitos</h3><p className="text-3xl font-bold">{isLoading ? '...' : riskStatusCounts?.[RiskStatus.Accepted]}</p></Card>
             
-            <MaturityAndComplianceScores controls={controls} />
+            <MaturityAndComplianceScores isLoading={isLoading} controls={controls} />
 
             <div className="lg:col-span-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {isLoading ? (
-                    <Card><h2 className="text-base font-semibold">Carregando Heatmap...</h2></Card>
+                {isLoading || !risks ? (
+                    <Card><div className="h-64 w-full bg-surface/50 rounded animate-pulse"></div></Card>
                 ) : (
                     <RiskHeatmap risks={risks} />
                 )}
-                {isLoading ? (
-                     <Card><h2 className="text-base font-semibold">Carregando Riscos...</h2></Card>
+                {isLoading || !risks ? (
+                     <Card><div className="h-64 w-full bg-surface/50 rounded animate-pulse"></div></Card>
                 ) : (
                     <RiskByTypeChart risks={risks} />
                 )}
-                 <ObsolescenceDashboardCard items={obsolescenceItems} />
+                 <ObsolescenceDashboardCard isLoading={isLoading} items={obsolescenceItems} />
             </div>
         </div>
     );
@@ -859,24 +1000,6 @@ const RiskTable = ({ risks, onEdit, onDelete, highlightedRowId, isLoading }) => 
             return { text: 'No Prazo', className: 'bg-blue-500/20 text-blue-400' };
         }
     };
-    
-    const SkeletonRow = () => (
-        <tr className="border-t border-border-color">
-            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
-            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
-            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
-            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
-            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
-            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
-            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
-            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
-            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
-            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
-            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
-            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
-            <td className="px-2 py-3"><div className="h-4 bg-surface/50 rounded animate-pulse"></div></td>
-        </tr>
-    );
 
     return (
         <div className="bg-surface rounded-lg overflow-x-auto">
@@ -900,7 +1023,7 @@ const RiskTable = ({ risks, onEdit, onDelete, highlightedRowId, isLoading }) => 
                 </thead>
                 <tbody className="text-xs">
                     {isLoading ? (
-                       Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
+                       <SkeletonLoader rows={5} cols={13} />
                     ) : (
                         risks.map(risk => {
                             const classification = getRiskClassification(risk.probability, risk.impact);
@@ -1064,7 +1187,7 @@ const RisksPage = ({ highlightedItem, setHighlightedItem }) => {
 };
 
 // --- Assets Page ---
-const AssetModal = ({ asset, onSave, onClose }) => {
+const AssetModal = ({ asset, onSave, onClose, isSaving }) => {
     const [formData, setFormData] = useState(
         asset || { name: '', type: AssetType.Server, criticality: AssetCriticality.Medium, owner: '' }
     );
@@ -1100,8 +1223,10 @@ const AssetModal = ({ asset, onSave, onClose }) => {
                         <input type="text" name="owner" value={formData.owner} onChange={handleChange} required className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
                     </div>
                     <div className="flex justify-end gap-4 pt-4">
-                        <button type="button" onClick={onClose} className="bg-surface/50 hover:bg-surface/80 font-semibold py-2 px-4 rounded-lg text-sm">Cancelar</button>
-                        <button type="submit" className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm">Salvar</button>
+                        <button type="button" onClick={onClose} disabled={isSaving} className="bg-surface/50 hover:bg-surface/80 font-semibold py-2 px-4 rounded-lg text-sm disabled:opacity-50">Cancelar</button>
+                        <button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm w-28 disabled:opacity-50">
+                             {isSaving ? <RefreshCw className="animate-spin mx-auto" size={20} /> : 'Salvar'}
+                        </button>
                     </div>
                 </form>
             </div>
@@ -1109,7 +1234,7 @@ const AssetModal = ({ asset, onSave, onClose }) => {
     );
 };
 
-const AssetTable = ({ assets, onEdit, onDelete, highlightedRowId }) => {
+const AssetTable = ({ assets, onEdit, onDelete, highlightedRowId, isLoading }) => {
     const getCriticalityClass = (criticality) => {
         switch (criticality) {
             case AssetCriticality.Critical: return 'bg-red-600 text-white';
@@ -1134,37 +1259,62 @@ const AssetTable = ({ assets, onEdit, onDelete, highlightedRowId }) => {
                     </tr>
                 </thead>
                 <tbody className="text-sm">
-                    {assets.map(asset => (
-                        <tr key={asset.id} className={`border-t border-border-color hover:bg-surface/50 ${asset.id === highlightedRowId ? 'highlight-row' : ''}`}>
-                            <td className="p-4 font-mono">{asset.id}</td>
-                            <td className="p-4 font-semibold">{asset.name}</td>
-                            <td className="p-4 text-text-secondary">{asset.type}</td>
-                            <td className="p-4 text-center">
-                                <span className={`px-2 py-1 rounded-full text-xs font-bold ${getCriticalityClass(asset.criticality)}`}>
-                                    {asset.criticality.toUpperCase()}
-                                </span>
-                            </td>
-                            <td className="p-4">{asset.owner}</td>
-                            <td className="p-4 text-center">
-                                <div className="flex gap-2 justify-center">
-                                    <button onClick={() => onEdit(asset)} className="text-text-secondary hover:text-primary p-1"><Edit size={16} /></button>
-                                    <button onClick={() => onDelete(asset.id)} className="text-text-secondary hover:text-danger p-1"><Trash2 size={16} /></button>
-                                </div>
-                            </td>
-                        </tr>
-                    ))}
+                    {isLoading ? <SkeletonLoader rows={5} cols={6} /> : (
+                        assets.map(asset => (
+                            <tr key={asset.id} className={`border-t border-border-color hover:bg-surface/50 ${asset.id === highlightedRowId ? 'highlight-row' : ''}`}>
+                                <td className="p-4 font-mono">{asset.id}</td>
+                                <td className="p-4 font-semibold">{asset.name}</td>
+                                <td className="p-4 text-text-secondary">{asset.type}</td>
+                                <td className="p-4 text-center">
+                                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${getCriticalityClass(asset.criticality)}`}>
+                                        {asset.criticality.toUpperCase()}
+                                    </span>
+                                </td>
+                                <td className="p-4">{asset.owner}</td>
+                                <td className="p-4 text-center">
+                                    <div className="flex gap-2 justify-center">
+                                        <button onClick={() => onEdit(asset)} className="text-text-secondary hover:text-primary p-1"><Edit size={16} /></button>
+                                        <button onClick={() => onDelete(asset.id)} className="text-text-secondary hover:text-danger p-1"><Trash2 size={16} /></button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))
+                    )}
                 </tbody>
             </table>
         </div>
     );
 };
 
-const AssetsPage = ({ assets, setAssets, highlightedItem, setHighlightedItem }) => {
+const AssetsPage = ({ highlightedItem, setHighlightedItem }) => {
+    const [assets, setAssets] = useState<Asset[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingAsset, setEditingAsset] = useState(null);
-
+    const [isSaving, setIsSaving] = useState(false);
+    const toast = useToast();
+    
     const highlightedRowId = (highlightedItem?.page === 'Ativos') ? highlightedItem.id : null;
+
+    const fetchAssets = async () => {
+        try {
+            setIsLoading(true);
+            setError(null);
+            const fetchedAssets = await apiClient.getAssets();
+            setAssets(fetchedAssets);
+        } catch (err) {
+            setError('Falha ao carregar os dados de ativos.');
+            toast.addToast('Falha ao carregar os dados de ativos.', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+    useEffect(() => {
+        fetchAssets();
+    }, []);
 
     useEffect(() => {
         let timerId = null;
@@ -1173,9 +1323,7 @@ const AssetsPage = ({ assets, setAssets, highlightedItem, setHighlightedItem }) 
                 setHighlightedItem({ page: null, id: null });
             }, 2000); // Animation duration
         }
-        return () => {
-            if (timerId) clearTimeout(timerId);
-        };
+        return () => { if (timerId) clearTimeout(timerId); };
     }, [highlightedRowId, setHighlightedItem]);
 
     const filteredAssets = useMemo(() =>
@@ -1187,20 +1335,36 @@ const AssetsPage = ({ assets, setAssets, highlightedItem, setHighlightedItem }) 
         setEditingAsset(asset);
         setIsModalOpen(true);
     };
+    const closeModal = () => setIsModalOpen(false);
 
-    const handleSave = (assetData) => {
-        if (editingAsset) {
-            setAssets(assets.map(a => a.id === assetData.id ? assetData : a));
-        } else {
-            const maxId = assets.reduce((max, a) => Math.max(a.id, max), 0);
-            setAssets([...assets, { ...assetData, id: maxId + 1 }]);
+    const handleSave = async (assetData) => {
+        setIsSaving(true);
+        try {
+            if (editingAsset) {
+                await apiClient.updateAsset(assetData);
+                toast.addToast('Ativo atualizado com sucesso!', 'success');
+            } else {
+                await apiClient.createAsset(assetData);
+                toast.addToast('Ativo adicionado com sucesso!', 'success');
+            }
+            closeModal();
+            fetchAssets();
+        } catch (error) {
+            toast.addToast('Falha ao salvar o ativo.', 'error');
+        } finally {
+            setIsSaving(false);
         }
-        setIsModalOpen(false);
     };
 
-    const handleDelete = (id) => {
+    const handleDelete = async (id) => {
         if (window.confirm('Tem certeza que deseja excluir este ativo?')) {
-            setAssets(assets.filter(a => a.id !== id));
+             try {
+                await apiClient.deleteAsset(id);
+                toast.addToast('Ativo excluído com sucesso!', 'success');
+                fetchAssets();
+            } catch (error) {
+                toast.addToast('Falha ao excluir o ativo.', 'error');
+            }
         }
     };
 
@@ -1218,15 +1382,16 @@ const AssetsPage = ({ assets, setAssets, highlightedItem, setHighlightedItem }) 
                     <Plus size={18} /> Adicionar Ativo
                 </button>
             </div>
-            <AssetTable assets={filteredAssets} onEdit={openModal} onDelete={handleDelete} highlightedRowId={highlightedRowId} />
-            {isModalOpen && <AssetModal asset={editingAsset} onSave={handleSave} onClose={() => setIsModalOpen(false)} />}
+            {error && <div className="text-center text-danger p-4 bg-danger/10 rounded-lg">{error}</div>}
+            <AssetTable assets={filteredAssets} onEdit={openModal} onDelete={handleDelete} highlightedRowId={highlightedRowId} isLoading={isLoading} />
+            {isModalOpen && <AssetModal asset={editingAsset} onSave={handleSave} onClose={closeModal} isSaving={isSaving} />}
         </div>
     );
 };
 
 
 // --- Obsolescence Page ---
-const ObsolescenceModal = ({ item, onSave, onClose }) => {
+const ObsolescenceModal = ({ item, onSave, onClose, isSaving }) => {
     const [formData, setFormData] = useState(
         item || {
             assetName: '', assetType: ObsolescenceAssetType.Software, vendor: '', version: '',
@@ -1283,8 +1448,10 @@ const ObsolescenceModal = ({ item, onSave, onClose }) => {
                         <input type="text" name="owner" value={formData.owner} onChange={handleChange} required className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
                     </div>
                     <div className="flex justify-end gap-4 pt-4 flex-shrink-0">
-                        <button type="button" onClick={onClose} className="bg-surface/50 hover:bg-surface/80 font-semibold py-2 px-4 rounded-lg text-sm">Cancelar</button>
-                        <button type="submit" className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm">Salvar</button>
+                        <button type="button" onClick={onClose} disabled={isSaving} className="bg-surface/50 hover:bg-surface/80 font-semibold py-2 px-4 rounded-lg text-sm disabled:opacity-50">Cancelar</button>
+                        <button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm w-28 disabled:opacity-50">
+                             {isSaving ? <RefreshCw className="animate-spin mx-auto" size={20} /> : 'Salvar'}
+                        </button>
                     </div>
                 </form>
             </div>
@@ -1292,7 +1459,7 @@ const ObsolescenceModal = ({ item, onSave, onClose }) => {
     );
 };
 
-const ObsolescenceTable = ({ items, onEdit, onDelete }) => {
+const ObsolescenceTable = ({ items, onEdit, onDelete, isLoading }) => {
     const formatDate = (dateString) => {
         if (!dateString) return 'N/A';
         const date = new Date(dateString);
@@ -1328,37 +1495,62 @@ const ObsolescenceTable = ({ items, onEdit, onDelete }) => {
                     </tr>
                 </thead>
                 <tbody className="text-xs">
-                    {items.map(item => {
-                        const status = getStatus(item);
-                        return (
-                            <tr key={item.id} className="border-t border-border-color hover:bg-surface/50">
-                                <td className="p-4 font-semibold">{item.assetName}</td>
-                                <td className="p-4 text-text-secondary">{item.assetType}</td>
-                                <td className="p-4 text-text-secondary">{item.version}</td>
-                                <td className="p-4 text-center font-mono">{formatDate(item.endOfSupportDate)}</td>
-                                <td className="p-4 text-center">
-                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${status.className}`}>{status.text}</span>
-                                </td>
-                                <td className="p-4">{item.owner}</td>
-                                <td className="p-4 text-center">
-                                    <div className="flex gap-2 justify-center">
-                                        <button onClick={() => onEdit(item)} className="text-text-secondary hover:text-primary p-1"><Edit size={16} /></button>
-                                        <button onClick={() => onDelete(item.id)} className="text-text-secondary hover:text-danger p-1"><Trash2 size={16} /></button>
-                                    </div>
-                                </td>
-                            </tr>
-                        );
-                    })}
+                    {isLoading ? <SkeletonLoader rows={5} cols={7} /> : (
+                        items.map(item => {
+                            const status = getStatus(item);
+                            return (
+                                <tr key={item.id} className="border-t border-border-color hover:bg-surface/50">
+                                    <td className="p-4 font-semibold">{item.assetName}</td>
+                                    <td className="p-4 text-text-secondary">{item.assetType}</td>
+                                    <td className="p-4 text-text-secondary">{item.version}</td>
+                                    <td className="p-4 text-center font-mono">{formatDate(item.endOfSupportDate)}</td>
+                                    <td className="p-4 text-center">
+                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${status.className}`}>{status.text}</span>
+                                    </td>
+                                    <td className="p-4">{item.owner}</td>
+                                    <td className="p-4 text-center">
+                                        <div className="flex gap-2 justify-center">
+                                            <button onClick={() => onEdit(item)} className="text-text-secondary hover:text-primary p-1"><Edit size={16} /></button>
+                                            <button onClick={() => onDelete(item.id)} className="text-text-secondary hover:text-danger p-1"><Trash2 size={16} /></button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            );
+                        })
+                    )}
                 </tbody>
             </table>
         </div>
     );
 };
 
-const ObsolescencePage = ({ items, setItems }) => {
+const ObsolescencePage = () => {
+    const [items, setItems] = useState<ObsolescenceItem[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const toast = useToast();
+
+    const fetchItems = async () => {
+        try {
+            setIsLoading(true);
+            setError(null);
+            const fetchedItems = await apiClient.getObsolescenceItems();
+            setItems(fetchedItems);
+        } catch (err) {
+            setError('Falha ao carregar os dados de obsolescência.');
+            toast.addToast('Falha ao carregar os dados de obsolescência.', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchItems();
+    }, []);
 
     const filteredItems = useMemo(() =>
         items.filter(item => item.assetName.toLowerCase().includes(searchTerm.toLowerCase())),
@@ -1369,20 +1561,36 @@ const ObsolescencePage = ({ items, setItems }) => {
         setEditingItem(item);
         setIsModalOpen(true);
     };
+    const closeModal = () => setIsModalOpen(false);
 
-    const handleSave = (itemData) => {
-        if (editingItem) {
-            setItems(items.map(i => i.id === itemData.id ? itemData : i));
-        } else {
-            const maxId = items.reduce((max, i) => Math.max(i.id, max), 0);
-            setItems([...items, { ...itemData, id: maxId + 1 }]);
+    const handleSave = async (itemData) => {
+        setIsSaving(true);
+        try {
+            if (editingItem) {
+                await apiClient.updateObsolescenceItem(itemData);
+                toast.addToast('Item atualizado com sucesso!', 'success');
+            } else {
+                await apiClient.createObsolescenceItem(itemData);
+                toast.addToast('Item adicionado com sucesso!', 'success');
+            }
+            closeModal();
+            fetchItems();
+        } catch (error) {
+            toast.addToast('Falha ao salvar o item.', 'error');
+        } finally {
+            setIsSaving(false);
         }
-        setIsModalOpen(false);
     };
 
-    const handleDelete = (id) => {
+    const handleDelete = async (id) => {
         if (window.confirm('Tem certeza?')) {
-            setItems(items.filter(i => i.id !== id));
+            try {
+                await apiClient.deleteObsolescenceItem(id);
+                toast.addToast('Item excluído com sucesso!', 'success');
+                fetchItems();
+            } catch (error) {
+                toast.addToast('Falha ao excluir o item.', 'error');
+            }
         }
     };
 
@@ -1400,15 +1608,16 @@ const ObsolescencePage = ({ items, setItems }) => {
                     <Plus size={18} /> Adicionar Item
                 </button>
             </div>
-            <ObsolescenceTable items={filteredItems} onEdit={openModal} onDelete={handleDelete} />
-            {isModalOpen && <ObsolescenceModal item={editingItem} onSave={handleSave} onClose={() => setIsModalOpen(false)} />}
+            {error && <div className="text-center text-danger p-4 bg-danger/10 rounded-lg">{error}</div>}
+            <ObsolescenceTable items={filteredItems} onEdit={openModal} onDelete={handleDelete} isLoading={isLoading} />
+            {isModalOpen && <ObsolescenceModal item={editingItem} onSave={handleSave} onClose={closeModal} isSaving={isSaving} />}
         </div>
     );
 };
 
 
 // --- Compliance Page ---
-const ComplianceModal = ({ control, onSave, onClose }) => {
+const ComplianceModal = ({ control, onSave, onClose, isSaving }) => {
     const [formData, setFormData] = useState({
         status: control.status || ControlStatus.NotImplemented,
         processScore: control.processScore || '',
@@ -1461,8 +1670,10 @@ const ComplianceModal = ({ control, onSave, onClose }) => {
                         </div>
                     </div>
                     <div className="flex justify-end gap-4 pt-4">
-                        <button type="button" onClick={onClose} className="bg-surface/50 hover:bg-surface/80 font-semibold py-2 px-4 rounded-lg text-sm">Cancelar</button>
-                        <button type="submit" className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm">Salvar</button>
+                        <button type="button" onClick={onClose} disabled={isSaving} className="bg-surface/50 hover:bg-surface/80 font-semibold py-2 px-4 rounded-lg text-sm disabled:opacity-50">Cancelar</button>
+                        <button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm w-28 disabled:opacity-50">
+                            {isSaving ? <RefreshCw className="animate-spin mx-auto" size={20} /> : 'Salvar'}
+                        </button>
                     </div>
                 </form>
             </div>
@@ -1470,7 +1681,7 @@ const ComplianceModal = ({ control, onSave, onClose }) => {
     );
 };
 
-const ComplianceTable = ({ controls, onEdit }) => {
+const ComplianceTable = ({ controls, onEdit, isLoading }) => {
     const getStatusClass = (status) => {
         switch (status) {
             case ControlStatus.FullyImplemented: return 'bg-green-500/20 text-green-400';
@@ -1498,42 +1709,67 @@ const ComplianceTable = ({ controls, onEdit }) => {
                     </tr>
                 </thead>
                 <tbody className="text-sm">
-                    {controls.map(control => {
-                        const geral = (typeof control.processScore === 'number' && typeof control.practiceScore === 'number') 
-                            ? ((control.processScore + control.practiceScore) / 2).toFixed(1) 
-                            : 'N/A';
+                    {isLoading ? <SkeletonLoader rows={10} cols={9} /> : (
+                        controls.map(control => {
+                            const geral = (typeof control.processScore === 'number' && typeof control.practiceScore === 'number') 
+                                ? ((control.processScore + control.practiceScore) / 2).toFixed(1) 
+                                : 'N/A';
 
-                        return (
-                            <tr key={control.id} className="border-t border-border-color hover:bg-surface/50">
-                                <td className="p-3 font-mono text-xs">{control.id}</td>
-                                <td className="p-3 text-xs font-bold">{control.framework}</td>
-                                <td className="p-3 font-semibold max-w-sm"><p className="truncate" title={control.name}>{control.name}</p><p className="text-xs text-text-secondary">{control.family}</p></td>
-                                <td className="p-3 text-xs text-text-secondary max-w-md"><p className="truncate" title={control.description}>{control.description}</p></td>
-                                <td className="p-3 text-center">
-                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusClass(control.status)}`}>
-                                        {control.status || 'N/A'}
-                                    </span>
-                                </td>
-                                <td className="p-3 text-center font-mono text-xs">{control.processScore || 'N/A'}</td>
-                                <td className="p-3 text-center font-mono text-xs">{control.practiceScore || 'N/A'}</td>
-                                <td className="p-3 text-center font-mono text-xs font-bold">{geral}</td>
-                                <td className="p-3 text-center">
-                                    <button onClick={() => onEdit(control)} className="text-text-secondary hover:text-primary p-1"><Edit size={16} /></button>
-                                </td>
-                            </tr>
-                        )
-                    })}
+                            return (
+                                <tr key={control.id} className="border-t border-border-color hover:bg-surface/50">
+                                    <td className="p-3 font-mono text-xs">{control.id}</td>
+                                    <td className="p-3 text-xs font-bold">{control.framework}</td>
+                                    <td className="p-3 font-semibold max-w-sm"><p className="truncate" title={control.name}>{control.name}</p><p className="text-xs text-text-secondary">{control.family}</p></td>
+                                    <td className="p-3 text-xs text-text-secondary max-w-md"><p className="truncate" title={control.description}>{control.description}</p></td>
+                                    <td className="p-3 text-center">
+                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusClass(control.status)}`}>
+                                            {control.status || 'N/A'}
+                                        </span>
+                                    </td>
+                                    <td className="p-3 text-center font-mono text-xs">{control.processScore || 'N/A'}</td>
+                                    <td className="p-3 text-center font-mono text-xs">{control.practiceScore || 'N/A'}</td>
+                                    <td className="p-3 text-center font-mono text-xs font-bold">{geral}</td>
+                                    <td className="p-3 text-center">
+                                        <button onClick={() => onEdit(control)} className="text-text-secondary hover:text-primary p-1"><Edit size={16} /></button>
+                                    </td>
+                                </tr>
+                            )
+                        })
+                    )}
                 </tbody>
             </table>
         </div>
     );
 };
 
-const CompliancePage = ({ controls, setControls }) => {
+const CompliancePage = () => {
+    const [controls, setControls] = useState<Control[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [activeFramework, setActiveFramework] = useState('Todos');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingControl, setEditingControl] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const toast = useToast();
+    
+    const fetchControls = async () => {
+        try {
+            setIsLoading(true);
+            setError(null);
+            const fetchedControls = await apiClient.getComplianceControls();
+            setControls(fetchedControls);
+        } catch (err) {
+            setError('Falha ao carregar os dados de conformidade.');
+            toast.addToast('Falha ao carregar os dados de conformidade.', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+    useEffect(() => {
+        fetchControls();
+    }, []);
 
     const filteredControls = useMemo(() =>
         controls.filter(control =>
@@ -1547,10 +1783,21 @@ const CompliancePage = ({ controls, setControls }) => {
         setEditingControl(control);
         setIsModalOpen(true);
     };
+    const closeModal = () => setIsModalOpen(false);
 
-    const handleSave = (updatedControl) => {
-        setControls(controls.map(c => c.id === updatedControl.id ? updatedControl : c));
-        setIsModalOpen(false);
+    const handleSave = async (updatedControl) => {
+        setIsSaving(true);
+        try {
+            await apiClient.updateComplianceControl(updatedControl);
+            toast.addToast('Controle atualizado com sucesso!', 'success');
+            closeModal();
+            // Optimistic update
+            setControls(controls.map(c => c.id === updatedControl.id ? updatedControl : c));
+        } catch(e) {
+            toast.addToast('Falha ao atualizar o controle.', 'error');
+        } finally {
+            setIsSaving(false);
+        }
     };
     
     const frameworks = ['Todos', ...Object.values(FrameworkName)];
@@ -1577,15 +1824,16 @@ const CompliancePage = ({ controls, setControls }) => {
                         value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                 </div>
             </div>
-            <ComplianceTable controls={filteredControls} onEdit={openModal} />
-            {isModalOpen && <ComplianceModal control={editingControl} onSave={handleSave} onClose={() => setIsModalOpen(false)} />}
+            {error && <div className="text-center text-danger p-4 bg-danger/10 rounded-lg">{error}</div>}
+            <ComplianceTable controls={filteredControls} onEdit={openModal} isLoading={isLoading} />
+            {isModalOpen && <ComplianceModal control={editingControl} onSave={handleSave} onClose={closeModal} isSaving={isSaving} />}
         </div>
     );
 };
 
 
 // --- Data Controls Page ---
-const DataControlModal = ({ control, onSave, onClose }) => {
+const DataControlModal = ({ control, onSave, onClose, isSaving }) => {
     const [formData, setFormData] = useState(
         control || {
             name: '', description: '', category: '', relatedRegulation: '',
@@ -1636,8 +1884,10 @@ const DataControlModal = ({ control, onSave, onClose }) => {
                         <input type="text" name="owner" value={formData.owner} onChange={handleChange} required className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm" />
                     </div>
                     <div className="flex justify-end gap-4 pt-4 flex-shrink-0">
-                        <button type="button" onClick={onClose} className="bg-surface/50 hover:bg-surface/80 font-semibold py-2 px-4 rounded-lg text-sm">Cancelar</button>
-                        <button type="submit" className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm">Salvar</button>
+                        <button type="button" onClick={onClose} disabled={isSaving} className="bg-surface/50 hover:bg-surface/80 font-semibold py-2 px-4 rounded-lg text-sm disabled:opacity-50">Cancelar</button>
+                        <button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/80 text-white font-semibold py-2 px-4 rounded-lg text-sm w-28 disabled:opacity-50">
+                             {isSaving ? <RefreshCw className="animate-spin mx-auto" size={20} /> : 'Salvar'}
+                        </button>
                     </div>
                 </form>
             </div>
@@ -1645,7 +1895,7 @@ const DataControlModal = ({ control, onSave, onClose }) => {
     );
 };
 
-const DataControlTable = ({ controls, onEdit, onDelete }) => {
+const DataControlTable = ({ controls, onEdit, onDelete, isLoading }) => {
     const getCriticalityClass = (criticality) => {
         switch (criticality) {
             case AssetCriticality.Critical: return 'bg-red-600 text-white';
@@ -1680,40 +1930,66 @@ const DataControlTable = ({ controls, onEdit, onDelete }) => {
                     </tr>
                 </thead>
                 <tbody className="text-sm">
-                    {controls.map(control => (
-                        <tr key={control.id} className="border-t border-border-color hover:bg-surface/50">
-                            <td className="p-4 font-mono">{control.id}</td>
-                            <td className="p-4 font-semibold">{control.name}</td>
-                            <td className="p-4 text-text-secondary">{control.category}</td>
-                            <td className="p-4 text-center">
-                                <span className={`px-2 py-1 rounded-full text-xs font-bold ${getCriticalityClass(control.criticality)}`}>
-                                    {control.criticality.toUpperCase()}
-                                </span>
-                            </td>
-                             <td className="p-4 text-center">
-                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusClass(control.status)}`}>
-                                    {control.status}
-                                </span>
-                            </td>
-                            <td className="p-4">{control.owner}</td>
-                            <td className="p-4 text-center">
-                                <div className="flex gap-2 justify-center">
-                                    <button onClick={() => onEdit(control)} className="text-text-secondary hover:text-primary p-1"><Edit size={16} /></button>
-                                    <button onClick={() => onDelete(control.id)} className="text-text-secondary hover:text-danger p-1"><Trash2 size={16} /></button>
-                                </div>
-                            </td>
-                        </tr>
-                    ))}
+                    {isLoading ? <SkeletonLoader rows={5} cols={7} /> : (
+                        controls.map(control => (
+                            <tr key={control.id} className="border-t border-border-color hover:bg-surface/50">
+                                <td className="p-4 font-mono">{control.id}</td>
+                                <td className="p-4 font-semibold">{control.name}</td>
+                                <td className="p-4 text-text-secondary">{control.category}</td>
+                                <td className="p-4 text-center">
+                                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${getCriticalityClass(control.criticality)}`}>
+                                        {control.criticality.toUpperCase()}
+                                    </span>
+                                </td>
+                                 <td className="p-4 text-center">
+                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusClass(control.status)}`}>
+                                        {control.status}
+                                    </span>
+                                </td>
+                                <td className="p-4">{control.owner}</td>
+                                <td className="p-4 text-center">
+                                    <div className="flex gap-2 justify-center">
+                                        <button onClick={() => onEdit(control)} className="text-text-secondary hover:text-primary p-1"><Edit size={16} /></button>
+                                        <button onClick={() => onDelete(control.id)} className="text-text-secondary hover:text-danger p-1"><Trash2 size={16} /></button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))
+                    )}
                 </tbody>
             </table>
         </div>
     );
 };
 
-const DataControlsPage = ({ dataControls, setDataControls }) => {
+const DataControlsPage = () => {
+    const [dataControls, setDataControls] = useState<DataControl[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingControl, setEditingControl] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const toast = useToast();
+
+    const fetchControls = async () => {
+        try {
+            setIsLoading(true);
+            setError(null);
+            const fetchedControls = await apiClient.getDataControls();
+            setDataControls(fetchedControls);
+        } catch (err) {
+            setError('Falha ao carregar os dados de controles.');
+            toast.addToast('Falha ao carregar os dados de controles.', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchControls();
+    }, []);
+
 
     const filteredControls = useMemo(() =>
         dataControls.filter(control =>
@@ -1727,20 +2003,36 @@ const DataControlsPage = ({ dataControls, setDataControls }) => {
         setEditingControl(control);
         setIsModalOpen(true);
     };
+    const closeModal = () => setIsModalOpen(false);
 
-    const handleSave = (controlData) => {
-        if (editingControl) {
-            setDataControls(dataControls.map(c => c.id === controlData.id ? controlData : c));
-        } else {
-            const maxId = dataControls.reduce((max, c) => Math.max(c.id, max), 0);
-            setDataControls([...dataControls, { ...controlData, id: maxId + 1 }]);
+    const handleSave = async (controlData) => {
+        setIsSaving(true);
+        try {
+            if (editingControl) {
+                await apiClient.updateDataControl(controlData);
+                toast.addToast('Controle atualizado com sucesso!', 'success');
+            } else {
+                await apiClient.createDataControl(controlData);
+                toast.addToast('Controle adicionado com sucesso!', 'success');
+            }
+            closeModal();
+            fetchControls();
+        } catch (error) {
+            toast.addToast('Falha ao salvar o controle.', 'error');
+        } finally {
+            setIsSaving(false);
         }
-        setIsModalOpen(false);
     };
 
-    const handleDelete = (id) => {
+    const handleDelete = async (id) => {
         if (window.confirm('Tem certeza que deseja excluir este controle de dados?')) {
-            setDataControls(dataControls.filter(c => c.id !== id));
+            try {
+                await apiClient.deleteDataControl(id);
+                toast.addToast('Controle excluído com sucesso!', 'success');
+                fetchControls();
+            } catch (error) {
+                toast.addToast('Falha ao excluir o controle.', 'error');
+            }
         }
     };
 
@@ -1758,8 +2050,9 @@ const DataControlsPage = ({ dataControls, setDataControls }) => {
                     <Plus size={18} /> Adicionar Controle
                 </button>
             </div>
-            <DataControlTable controls={filteredControls} onEdit={openModal} onDelete={handleDelete} />
-            {isModalOpen && <DataControlModal control={editingControl} onSave={handleSave} onClose={() => setIsModalOpen(false)} />}
+            {error && <div className="text-center text-danger p-4 bg-danger/10 rounded-lg">{error}</div>}
+            <DataControlTable controls={filteredControls} onEdit={openModal} onDelete={handleDelete} isLoading={isLoading} />
+            {isModalOpen && <DataControlModal control={editingControl} onSave={handleSave} onClose={closeModal} isSaving={isSaving} />}
         </div>
     );
 };
@@ -1809,9 +2102,10 @@ const AIAnalysisResult = ({ result, isFromCache }) => {
     );
 };
 
-const AIAnalysisPage = ({ assets, setActivePage, setHighlightedItem }) => {
-    const [risks, setRisks] = useState<Risk[]>([]);
-    const [isLoadingRisks, setIsLoadingRisks] = useState(true);
+const AIAnalysisPage = ({ setActivePage, setHighlightedItem }) => {
+    const [risks, setRisks] = useState<Risk[] | null>(null);
+    const [assets, setAssets] = useState<Asset[] | null>(null);
+    const [isLoadingData, setIsLoadingData] = useState(true);
     const [selectedType, setSelectedType] = useState('risk');
     const [selectedId, setSelectedId] = useState('');
     const [scenario, setScenario] = useState('');
@@ -1820,21 +2114,27 @@ const AIAnalysisPage = ({ assets, setActivePage, setHighlightedItem }) => {
     const [error, setError] = useState('');
     const [isFromCache, setIsFromCache] = useState(false);
     const analysisCache = useRef(new Map());
+    const toast = useToast();
 
     useEffect(() => {
-        const fetchRisks = async () => {
+        const fetchAnalysisData = async () => {
             try {
-                setIsLoadingRisks(true);
-                const fetchedRisks = await apiClient.getRisks();
+                setIsLoadingData(true);
+                const [fetchedRisks, fetchedAssets] = await Promise.all([
+                    apiClient.getRisks(),
+                    apiClient.getAssets()
+                ]);
                 setRisks(fetchedRisks);
+                setAssets(fetchedAssets);
             } catch (err) {
-                 setError("Falha ao carregar riscos para análise.");
+                 setError("Falha ao carregar dados para análise.");
+                 toast.addToast("Falha ao carregar dados para análise.", 'error');
             } finally {
-                setIsLoadingRisks(false);
+                setIsLoadingData(false);
             }
         };
-        fetchRisks();
-    }, []);
+        fetchAnalysisData();
+    }, [toast]);
 
     const handleGoToItem = () => {
         if (!selectedId) return;
@@ -1861,9 +2161,8 @@ const AIAnalysisPage = ({ assets, setActivePage, setHighlightedItem }) => {
             return;
         }
 
-        const selectedItem = selectedType === 'risk'
-            ? risks.find(r => r.id === parseInt(selectedId))
-            : assets.find(a => a.id === parseInt(selectedId));
+        const items = selectedType === 'risk' ? risks : assets;
+        const selectedItem = items?.find(r => r.id === parseInt(selectedId));
 
         if (!selectedItem) {
             setError('Item selecionado não encontrado.');
@@ -1962,9 +2261,9 @@ const AIAnalysisPage = ({ assets, setActivePage, setHighlightedItem }) => {
                             <div className="flex items-center gap-2">
                                 <select id="item-selector" value={selectedId} onChange={e => setSelectedId(e.target.value)}
                                     className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                                    disabled={isLoadingRisks}>
-                                    <option value="">{isLoadingRisks ? 'Carregando...' : '-- Selecione --'}</option>
-                                    {options.map(item => <option key={item.id} value={item.id}>{item.name || item.title}</option>)}
+                                    disabled={isLoadingData}>
+                                    <option value="">{isLoadingData ? 'Carregando...' : '-- Selecione --'}</option>
+                                    {options?.map(item => <option key={item.id} value={item.id}>{item.name || item.title}</option>)}
                                 </select>
                                 <button
                                     onClick={handleGoToItem}
@@ -1985,7 +2284,7 @@ const AIAnalysisPage = ({ assets, setActivePage, setHighlightedItem }) => {
                     </div>
                     {error && <p className="text-sm text-danger">{error}</p>}
                     <div>
-                        <button onClick={handleAnalysis} disabled={isLoading || isLoadingRisks}
+                        <button onClick={handleAnalysis} disabled={isLoading || isLoadingData}
                             className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary/80 text-white font-semibold py-3 px-4 rounded-lg transition-colors disabled:bg-primary/50 disabled:cursor-not-allowed text-sm">
                             {isLoading ? <> <RefreshCw className="animate-spin" size={18} /> Analisando... </> : <> <Bot size={18} /> Analisar com IA </>}
                         </button>
@@ -2098,10 +2397,7 @@ const AuthenticationSettingsTab = ({ ssoConfig, setSsoConfig }) => {
 };
 
 
-const SettingsPage = ({
-  users, setUsers, profiles, setProfiles, groups, setGroups,
-  appData, setAppData, alertRules, setAlertRules, ssoConfig, setSsoConfig
-}) => {
+const SettingsPage = ({ users, setUsers, profiles, setProfiles, groups, setGroups, alertRules, setAlertRules, ssoConfig, setSsoConfig }) => {
     const [activeTab, setActiveTab] = useState('Perfis');
     
     const renderTabContent = () => {
@@ -2113,7 +2409,7 @@ const SettingsPage = ({
             case 'Usuários':
                 return <UserManagementTab users={users} setUsers={setUsers} allProfiles={profiles} />;
             case 'Dados':
-                return <DataManagementTab appData={appData} setAppData={setAppData} />;
+                return <DataManagementTab />;
             case 'Alertas':
                 return <AlertManagementTab alertRules={alertRules} setAlertRules={setAlertRules} allUsers={users} allGroups={groups} />;
             case 'Notificações':
@@ -2369,19 +2665,23 @@ const ProfileModal = ({ profile, onSave, onClose }) => {
     );
 };
 
-const DataManagementTab = ({ appData, setAppData }) => {
+const DataManagementTab = () => {
     const toast = useToast();
+    
     const exportToCSV = async (dataType, filename) => {
         let data;
-        if (dataType === 'risks') {
-            try {
-                data = await apiClient.getRisks();
-            } catch (e) {
-                toast.addToast('Falha ao buscar riscos para exportação.', 'error');
-                return;
+        try {
+            switch(dataType) {
+                case 'risks': data = await apiClient.getRisks(); break;
+                case 'assets': data = await apiClient.getAssets(); break;
+                case 'obsolescenceItems': data = await apiClient.getObsolescenceItems(); break;
+                default:
+                    toast.addToast(`Tipo de dado inválido para exportação.`, 'error');
+                    return;
             }
-        } else {
-            data = appData[dataType];
+        } catch (e) {
+            toast.addToast(`Falha ao buscar dados de ${filename} para exportação.`, 'error');
+            return;
         }
 
         if (!data || data.length === 0) {
@@ -2399,11 +2699,13 @@ const DataManagementTab = ({ appData, setAppData }) => {
     };
 
     const handleReset = async () => {
-        if (prompt('Ação irreversível. Digite "RESETAR" para confirmar.') === 'RESETAR') {
-            await apiClient.resetData();
-            // This is a temporary solution. In a real app, pages would refetch data.
-            // For now, we'll alert the user to refresh.
-            toast.addToast('Dados de riscos resetados. Recarregue a página para ver as mudanças.', 'success');
+        if (prompt('Ação irreversível. Isso irá resetar TODOS os dados da aplicação. Digite "RESETAR TUDO" para confirmar.') === 'RESETAR TUDO') {
+            try {
+                await apiClient.resetData();
+                toast.addToast('Todos os dados foram resetados. Recarregue a página para ver as mudanças.', 'success');
+            } catch {
+                toast.addToast('Falha ao resetar os dados.', 'error');
+            }
         } else {
             toast.addToast('Ação cancelada.', 'error');
         }
@@ -2421,9 +2723,9 @@ const DataManagementTab = ({ appData, setAppData }) => {
             </Card>
             <Card className="border border-danger/50">
                  <h3 className="text-base font-semibold mb-2 text-danger">Zona de Perigo</h3>
-                 <p className="text-xs text-text-secondary mb-4">Ações nesta seção são permanentes e afetam apenas os dados simulados no backend.</p>
+                 <p className="text-xs text-text-secondary mb-4">Ações nesta seção são permanentes e afetam todos os dados simulados no backend.</p>
                  <div className="flex justify-between items-center bg-background/50 p-4 rounded-lg">
-                     <div><p className="font-semibold text-sm">Resetar Dados de Riscos</p><p className="text-xs text-text-secondary">Restaura os dados de riscos para o estado inicial.</p></div>
+                     <div><p className="font-semibold text-sm">Resetar Todos os Dados</p><p className="text-xs text-text-secondary">Restaura todos os dados da aplicação para o estado inicial.</p></div>
                      <button onClick={handleReset} className="flex items-center gap-2 bg-danger hover:bg-danger/80 text-white font-bold py-2 px-4 rounded-lg text-sm"><RefreshCw size={18} /> Resetar</button>
                  </div>
             </Card>
@@ -2702,13 +3004,10 @@ const LoginPage = ({ onLoginSuccess }) => {
 const App = () => {
     const [activePage, setActivePage] = useState('Dashboard');
     const [user, setUser] = useState(null);
-    const [assets, setAssets] = useState(initialAssets);
-    const [dataControls, setDataControls] = useState(mockDataControls);
-    const [complianceControls, setComplianceControls] = useState(allControls);
+    // State is being decoupled from App and moved to individual pages.
     const [users, setUsers] = useState(initialUsers);
     const [profiles, setProfiles] = useState(initialProfiles);
     const [groups, setGroups] = useState(initialGroups);
-    const [obsolescenceItems, setObsolescenceItems] = useState(initialObsolescenceItems);
     const [alertRules, setAlertRules] = useState(initialAlertRules);
     const [highlightedItem, setHighlightedItem] = useState({ page: null, id: null });
     const [ssoConfig, setSsoConfig] = useState({
@@ -2730,13 +3029,13 @@ const App = () => {
 
     const renderPage = () => {
         switch (activePage) {
-            case 'Dashboard': return <DashboardPage controls={complianceControls} obsolescenceItems={obsolescenceItems} />;
+            case 'Dashboard': return <DashboardPage />;
             case 'Riscos': return <RisksPage highlightedItem={highlightedItem} setHighlightedItem={setHighlightedItem} />;
-            case 'Ativos': return <AssetsPage assets={assets} setAssets={setAssets} highlightedItem={highlightedItem} setHighlightedItem={setHighlightedItem} />;
-            case 'Obsolescência': return <ObsolescencePage items={obsolescenceItems} setItems={setObsolescenceItems} />;
-            case 'Conformidade': return <CompliancePage controls={complianceControls} setControls={setComplianceControls} />;
-            case 'Controles de Dados': return <DataControlsPage dataControls={dataControls} setDataControls={setDataControls} />;
-            case 'Análise de IA': return <AIAnalysisPage assets={assets} setActivePage={setActivePage} setHighlightedItem={setHighlightedItem} />;
+            case 'Ativos': return <AssetsPage highlightedItem={highlightedItem} setHighlightedItem={setHighlightedItem} />;
+            case 'Obsolescência': return <ObsolescencePage />;
+            case 'Conformidade': return <CompliancePage />;
+            case 'Controles de Dados': return <DataControlsPage />;
+            case 'Análise de IA': return <AIAnalysisPage setActivePage={setActivePage} setHighlightedItem={setHighlightedItem} />;
             case 'Configurações':
                 return <SettingsPage 
                             users={users} setUsers={setUsers}
@@ -2744,10 +3043,8 @@ const App = () => {
                             groups={groups} setGroups={setGroups}
                             alertRules={alertRules} setAlertRules={setAlertRules}
                             ssoConfig={ssoConfig} setSsoConfig={setSsoConfig}
-                            appData={{ assets, dataControls, complianceControls, obsolescenceItems }}
-                            setAppData={{ setAssets, setDataControls, setComplianceControls, setObsolescenceItems }}
                         />;
-            default: return <DashboardPage controls={complianceControls} obsolescenceItems={obsolescenceItems} />;
+            default: return <DashboardPage />;
         }
     };
 
