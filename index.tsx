@@ -29,7 +29,17 @@ enum FrameworkName { NIST = 'NIST CSF 2.0', CIS = 'CIS Controls v8', LGPD = 'LGP
 enum ControlStatus { NotImplemented = 'Não Implementado', PartiallyImplemented = 'Parcialmente Implementado', FullyImplemented = 'Totalmente Implementado', InProgress = 'Em Progresso' }
 enum DataControlStatus { Active = 'Ativo', Inactive = 'Inativo', InReview = 'Em Revisão' }
 enum AssetCriticality { Low = 'Baixa', Medium = 'Média', High = 'Alta', Critical = 'Crítica' }
-enum AssetType { Server = 'Servidor', WebApp = 'Aplicação Web', Database = 'Banco de Dados', IPAddress = 'Endereço IP', Domain = 'Domínio', MobileApp = 'Aplicativo Mobile', Other = 'Outro' }
+enum AssetType {
+    Server = 'Servidor',
+    WebApp = 'Aplicação Web',
+    Database = 'Banco de Dados',
+    API = 'API',
+    NetworkAsset = 'Ativo de Rede',
+    IPAddress = 'Endereço IP',
+    Domain = 'Domínio',
+    MobileApp = 'Aplicativo Mobile',
+    Other = 'Outro'
+}
 enum ObsolescenceStatus { Supported = 'Suportado', NearingEOL = 'Próximo do Fim', Obsolete = 'Obsoleto' }
 enum ObsolescenceAssetType { Software = 'Software', Hardware = 'Hardware', OS = 'Sistema Operacional', Library = 'Biblioteca' }
 enum AlertTriggerEvent {
@@ -168,8 +178,9 @@ const mockDataControls: DataControl[] = [
 
 const initialAssets: Asset[] = [
     { id: 1, name: 'Servidor de Autenticação (auth.exa.com.br)', type: AssetType.Server, criticality: AssetCriticality.Critical, owner: 'Equipe de Infra' },
-    { id: 2, name: 'API de Pagamentos', type: AssetType.WebApp, criticality: AssetCriticality.Critical, owner: 'Equipe de Dev' },
+    { id: 2, name: 'API de Pagamentos', type: AssetType.API, criticality: AssetCriticality.Critical, owner: 'Equipe de Dev' },
     { id: 3, name: 'DB de Clientes (prd-customer-db-01)', type: AssetType.Database, criticality: AssetCriticality.High, owner: 'Equipe de DBA' },
+    { id: 4, name: 'Firewall de Borda (FW-CORP-01)', type: AssetType.NetworkAsset, criticality: AssetCriticality.High, owner: 'Equipe de Redes' },
 ];
 
 const initialObsolescenceItems: ObsolescenceItem[] = [
@@ -179,20 +190,53 @@ const initialObsolescenceItems: ObsolescenceItem[] = [
     { id: 4, assetName: 'AngularJS', assetType: ObsolescenceAssetType.Library, vendor: 'Google', version: '1.x', endOfLifeDate: '2021-12-31', endOfSupportDate: '2021-12-31', impactDescription: 'Framework frontend sem suporte, vulnerável a XSS e outros ataques web.', recommendedAction: 'Migrar aplicação para versão mais recente do Angular ou outro framework.', owner: 'Equipe Frontend' },
 ];
 
-// --- COMPREHENSIVE CONTROLS DATABASE (MINIFIED) ---
+// --- COMPREHENSIVE CONTROLS DATABASE ---
 const allControls: Control[] = [
-    { id: 'GV.OC-01', framework: FrameworkName.NIST, family: 'Governar', name: 'Contexto Organizacional', description: 'A missão organizacional é compreendida e informa o gerenciamento de riscos de cibersegurança.', status: ControlStatus.FullyImplemented, processScore: 4, practiceScore: 4 },
-    { id: 'GV.RM-01', framework: FrameworkName.NIST, family: 'Governar', name: 'Estratégia de Gerenciamento de Risco', description: 'Os objetivos de gerenciamento de risco são estabelecidos e acordados pelas partes interessadas da organização.', status: ControlStatus.FullyImplemented, processScore: 4, practiceScore: 4 },
-    { id: 'ID.AM-01', framework: FrameworkName.NIST, family: 'Identificar', name: 'Gerenciamento de Ativos', description: 'Inventários de hardware gerenciados pela organização são mantidos.', status: ControlStatus.FullyImplemented, processScore: 4, practiceScore: 4 },
-    { id: 'PR.AA-01', framework: FrameworkName.NIST, family: 'Proteger', name: 'Gerenciamento de Identidade, Autenticação e Controle de Acesso', description: 'Identidades e credenciais para usuários, serviços e hardware autorizados são gerenciadas pela organização.', status: ControlStatus.FullyImplemented, processScore: 4, practiceScore: 4 },
-    { id: 'DE.CM-01', framework: FrameworkName.NIST, family: 'Detectar', name: 'Monitoramento Contínuo', description: 'Redes e serviços de rede são monitorados para encontrar eventos potencialmente adversos.', status: ControlStatus.FullyImplemented, processScore: 3, practiceScore: 3 },
-    { id: 'RS.MA-01', framework: FrameworkName.NIST, family: 'Responder', name: 'Gerenciamento de Incidentes', description: 'O plano de resposta a incidentes é executado em coordenação com terceiros relevantes assim que um incidente é declarado.', status: ControlStatus.FullyImplemented, processScore: 4, practiceScore: 4 },
-    { id: 'RC.RP-01', framework: FrameworkName.NIST, family: 'Recuperar', name: 'Execução do Plano de Recuperação de Incidentes', description: 'A parte de recuperação do plano de resposta a incidentes é executada assim que iniciada a partir do processo de resposta a incidentes.', status: ControlStatus.FullyImplemented, processScore: 4, practiceScore: 4 },
-    { id: 'CIS-1.1', framework: FrameworkName.CIS, family: 'Controle 1', name: 'Estabelecer e Manter um Inventário Detalhado de Ativos Corporativos', description: 'Estabelecer e manter um inventário preciso, detalhado e atualizado de todos os ativos corporativos.', status: ControlStatus.PartiallyImplemented },
-    { id: 'CIS-3.1', framework: FrameworkName.CIS, family: 'Controle 3', name: 'Estabelecer e Manter um Processo de Gerenciamento de Dados', description: 'Estabelecer e manter um processo documentado de gerenciamento de dados.', status: ControlStatus.InProgress },
-    { id: 'CIS-7.1', framework: FrameworkName.CIS, family: 'Controle 7', name: 'Estabelecer e Manter um Processo de Gerenciamento de Vulnerabilidades', description: 'Estabelecer e manter um processo documentado de gerenciamento de vulnerabilidades para ativos corporativos.', status: ControlStatus.FullyImplemented },
+    // LGPD Controls
     { id: 'LGPD-Art.6-VII', framework: FrameworkName.LGPD, family: 'Princípios', name: 'Segurança', description: 'Utilizar medidas técnicas e administrativas aptas a proteger os dados pessoais de acessos não autorizados.', status: ControlStatus.FullyImplemented },
     { id: 'LGPD-Art.46', framework: FrameworkName.LGPD, family: 'Segurança', name: 'Medidas de Segurança', description: 'Adotar medidas de segurança, técnicas e administrativas para proteger os dados pessoais.', status: ControlStatus.PartiallyImplemented },
+    // NIST CSF 2.0 Controls
+    ...['GV.OC-01: A missão organizacional é compreendida e informa o gerenciamento de riscos.', 'GV.OC-02: Partes interessadas internas e externas são compreendidas.','GV.OC-03: Requisitos legais e regulatórios são compreendidos.','GV.OC-04: Objetivos críticos que partes externas dependem são compreendidos.','GV.OC-05: Resultados e serviços dos quais a organização depende são compreendidos.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Governar', name: 'Contexto Organizacional', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented, processScore: 3, practiceScore: 2 })),
+    ...['GV.RM-01: Objetivos de gerenciamento de risco são estabelecidos.','GV.RM-02: Apetite e tolerância a risco são estabelecidos.','GV.RM-03: Atividades de risco de cibersegurança são incluídas no ERM.','GV.RM-04: Direção estratégica para respostas a risco é estabelecida.','GV.RM-05: Linhas de comunicação para riscos são estabelecidas.','GV.RM-06: Método padronizado para cálculo de risco é estabelecido.','GV.RM-07: Oportunidades estratégicas (riscos positivos) são caracterizadas.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Governar', name: 'Estratégia de Gerenciamento de Risco', description: c.split(':')[1].trim(), status: ControlStatus.PartiallyImplemented, processScore: 4, practiceScore: 3 })),
+    ...['GV.RR-01: Liderança organizacional é responsável pelo risco.','GV.RR-02: Papéis e responsabilidades são estabelecidos.','GV.RR-03: Recursos adequados são alocados.','GV.RR-04: Cibersegurança é incluída nas práticas de RH.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Governar', name: 'Papéis, Responsabilidades e Autoridades', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
+    ...['GV.PO-01: Política de gerenciamento de risco é estabelecida.','GV.PO-02: Política de gerenciamento de risco é revisada e atualizada.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Governar', name: 'Política', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
+    ...['GV.OV-01: Resultados da estratégia de risco são revisados.','GV.OV-02: A estratégia de risco é revisada e ajustada.','GV.OV-03: Desempenho do gerenciamento de risco é avaliado.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Governar', name: 'Supervisão', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
+    ...['GV.SC-01: Programa de C-SCRM é estabelecido.','GV.SC-02: Papéis e responsabilidades para C-SCRM são estabelecidos.','GV.SC-03: C-SCRM é integrado ao gerenciamento de risco.','GV.SC-04: Fornecedores são conhecidos e priorizados por criticidade.','GV.SC-05: Requisitos de C-SCRM são estabelecidos em contratos.','GV.SC-06: Due diligence é realizada antes de novas relações.','GV.SC-07: Riscos de fornecedores são gerenciados.','GV.SC-08: Fornecedores são incluídos no plano de resposta a incidentes.','GV.SC-09: Práticas de segurança da cadeia de suprimentos são integradas.','GV.SC-10: Planos de C-SCRM incluem atividades pós-parceria.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Governar', name: 'Gerenciamento de Risco da Cadeia de Suprimentos', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
+    ...['ID.AM-01: Inventários de hardware são mantidos.','ID.AM-02: Inventários de software, serviços e sistemas são mantidos.','ID.AM-03: Fluxos de dados de rede são mantidos.','ID.AM-04: Inventários de serviços de fornecedores são mantidos.','ID.AM-05: Ativos são priorizados.','ID.AM-07: Inventários de dados e metadados são mantidos.','ID.AM-08: Ciclo de vida de ativos é gerenciado.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Identificar', name: 'Gerenciamento de Ativos', description: c.split(':')[1].trim(), status: ControlStatus.InProgress, processScore: 2, practiceScore: 3 })),
+    ...['ID.RA-01: Vulnerabilidades são identificadas e registradas.','ID.RA-02: Inteligência de ameaças é recebida.','ID.RA-03: Ameaças internas e externas são identificadas.','ID.RA-04: Impactos e probabilidades de ameaças são identificados.','ID.RA-05: Riscos são analisados para priorização.','ID.RA-06: Respostas a riscos são escolhidas e comunicadas.','ID.RA-07: Mudanças e exceções são gerenciadas.','ID.RA-08: Processos para divulgação de vulnerabilidades são estabelecidos.','ID.RA-09: Autenticidade e integridade de hardware/software são avaliadas.','ID.RA-10: Fornecedores críticos são avaliados.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Identificar', name: 'Avaliação de Risco', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
+    ...['ID.IM-01: Melhorias são identificadas a partir de avaliações.','ID.IM-02: Melhorias são identificadas a partir de testes e exercícios.','ID.IM-03: Melhorias são identificadas a partir da execução de processos.','ID.IM-04: Planos de resposta a incidentes são estabelecidos e melhorados.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Identificar', name: 'Melhoria', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
+    ...['PR.AA-01: Identidades e credenciais são gerenciadas.','PR.AA-02: Identidades são verificadas.','PR.AA-03: Usuários, serviços e hardware são autenticados.','PR.AA-04: Assertivas de identidade são protegidas.','PR.AA-05: Permissões de acesso são gerenciadas.','PR.AA-06: Acesso físico é gerenciado.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Proteger', name: 'Controle de Acesso', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
+    ...['PR.AT-01: Pessoal recebe treinamento de conscientização.','PR.AT-02: Indivíduos em papéis especializados recebem treinamento.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Proteger', name: 'Conscientização e Treinamento', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
+    ...['PR.DS-01: Confidencialidade, integridade e disponibilidade de dados em repouso são protegidas.','PR.DS-02: Confidencialidade, integridade e disponibilidade de dados em trânsito são protegidas.','PR.DS-10: Confidencialidade, integridade e disponibilidade de dados em uso são protegidas.','PR.DS-11: Backups de dados são criados e protegidos.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Proteger', name: 'Segurança de Dados', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
+    ...['PR.PS-01: Práticas de gerenciamento de configuração são estabelecidas.','PR.PS-02: Software é mantido e removido com base no risco.','PR.PS-03: Hardware é mantido e removido com base no risco.','PR.PS-04: Registros de log são gerados.','PR.PS-05: Instalação de software não autorizado é prevenida.','PR.PS-06: Práticas de desenvolvimento seguro são integradas.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Proteger', name: 'Segurança da Plataforma', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
+    ...['PR.IR-01: Redes e ambientes são protegidos de acesso lógico não autorizado.','PR.IR-02: Ativos de tecnologia são protegidos de ameaças ambientais.','PR.IR-03: Mecanismos para resiliência são implementados.','PR.IR-04: Capacidade de recursos adequada para garantir disponibilidade é mantida.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Proteger', name: 'Resiliência da Infraestrutura', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
+    ...['DE.CM-01: Redes são monitoradas para eventos adversos.','DE.CM-02: Ambiente físico é monitorado.','DE.CM-03: Atividade de pessoal e uso de tecnologia são monitorados.','DE.CM-06: Atividades de provedores de serviço externos são monitoradas.','DE.CM-09: Hardware, software e seus dados são monitorados.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Detectar', name: 'Monitoramento Contínuo', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
+    ...['DE.AE-02: Eventos adversos são analisados.','DE.AE-03: Informações de múltiplas fontes são correlacionadas.','DE.AE-04: Impacto e escopo de eventos adversos são compreendidos.','DE.AE-06: Informações sobre eventos adversos são fornecidas à equipe autorizada.','DE.AE-07: Inteligência de ameaças é integrada à análise.','DE.AE-08: Incidentes são declarados quando critérios definidos são atendidos.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Detectar', name: 'Análise de Eventos Adversos', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
+    ...['RS.MA-01: Plano de resposta a incidentes é executado.','RS.MA-02: Relatórios de incidentes são triados e validados.','RS.MA-03: Incidentes são categorizados e priorizados.','RS.MA-04: Incidentes são escalados.','RS.MA-05: Critérios para iniciar a recuperação de incidentes são aplicados.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Responder', name: 'Gerenciamento de Incidentes', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
+    ...['RS.AN-03: Análise é realizada para estabelecer o que aconteceu.','RS.AN-06: Ações durante a investigação são registradas.','RS.AN-07: Dados e metadados de incidentes são coletados.','RS.AN-08: Magnitude de um incidente é estimada e validada.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Responder', name: 'Análise de Incidentes', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
+    ...['RS.CO-02: Partes interessadas são notificadas.','RS.CO-03: Informações são compartilhadas.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Responder', name: 'Comunicação de Resposta a Incidentes', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
+    ...['RS.MI-01: Incidentes são contidos.','RS.MI-02: Incidentes são erradicados.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Responder', name: 'Mitigação de Incidentes', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
+    ...['RC.RP-01: Plano de recuperação é executado.','RC.RP-02: Ações de recuperação são selecionadas e priorizadas.','RC.RP-03: Integridade de backups é verificada.','RC.RP-04: Funções críticas da missão são consideradas.','RC.RP-05: Integridade dos ativos restaurados é verificada.','RC.RP-06: Fim da recuperação é declarado.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Recuperar', name: 'Execução do Plano de Recuperação', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
+    ...['RC.CO-03: Atividades de recuperação são comunicadas.','RC.CO-04: Atualizações públicas sobre a recuperação são compartilhadas.'].map(c => ({ id: c.split(':')[0], framework: FrameworkName.NIST, family: 'Recuperar', name: 'Comunicação de Recuperação', description: c.split(':')[1].trim(), status: ControlStatus.NotImplemented })),
+    // CIS Controls v8
+    ...Array.from({length: 5}, (_, i) => ({ id: `CIS-1.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 1: Inventário e Controle de Ativos Corporativos', name: `Salvaguarda 1.${i+1}`, description: `Descrição para a Salvaguarda 1.${i+1}`, status: ControlStatus.NotImplemented, processScore: 2, practiceScore: 2 })),
+    ...Array.from({length: 7}, (_, i) => ({ id: `CIS-2.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 2: Inventário e Controle de Ativos de Software', name: `Salvaguarda 2.${i+1}`, description: `Descrição para a Salvaguarda 2.${i+1}`, status: ControlStatus.NotImplemented })),
+    ...Array.from({length: 14}, (_, i) => ({ id: `CIS-3.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 3: Proteção de Dados', name: `Salvaguarda 3.${i+1}`, description: `Descrição para a Salvaguarda 3.${i+1}`, status: ControlStatus.NotImplemented, processScore: 4, practiceScore: 4 })),
+    ...Array.from({length: 12}, (_, i) => ({ id: `CIS-4.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 4: Configuração Segura de Ativos e Software', name: `Salvaguarda 4.${i+1}`, description: `Descrição para a Salvaguarda 4.${i+1}`, status: ControlStatus.NotImplemented })),
+    ...Array.from({length: 6}, (_, i) => ({ id: `CIS-5.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 5: Gerenciamento de Contas', name: `Salvaguarda 5.${i+1}`, description: `Descrição para a Salvaguarda 5.${i+1}`, status: ControlStatus.NotImplemented })),
+    ...Array.from({length: 8}, (_, i) => ({ id: `CIS-6.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 6: Gerenciamento de Controle de Acesso', name: `Salvaguarda 6.${i+1}`, description: `Descrição para a Salvaguarda 6.${i+1}`, status: ControlStatus.FullyImplemented, processScore: 5, practiceScore: 5 })),
+    ...Array.from({length: 7}, (_, i) => ({ id: `CIS-7.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 7: Gerenciamento Contínuo de Vulnerabilidades', name: `Salvaguarda 7.${i+1}`, description: `Descrição para a Salvaguarda 7.${i+1}`, status: ControlStatus.NotImplemented })),
+    ...Array.from({length: 12}, (_, i) => ({ id: `CIS-8.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 8: Gerenciamento de Logs de Auditoria', name: `Salvaguarda 8.${i+1}`, description: `Descrição para a Salvaguarda 8.${i+1}`, status: ControlStatus.NotImplemented })),
+    ...Array.from({length: 7}, (_, i) => ({ id: `CIS-9.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 9: Proteções de Email e Navegador Web', name: `Salvaguarda 9.${i+1}`, description: `Descrição para a Salvaguarda 9.${i+1}`, status: ControlStatus.NotImplemented })),
+    ...Array.from({length: 7}, (_, i) => ({ id: `CIS-10.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 10: Defesas contra Malware', name: `Salvaguarda 10.${i+1}`, description: `Descrição para a Salvaguarda 10.${i+1}`, status: ControlStatus.NotImplemented })),
+    ...Array.from({length: 5}, (_, i) => ({ id: `CIS-11.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 11: Recuperação de Dados', name: `Salvaguarda 11.${i+1}`, description: `Descrição para a Salvaguarda 11.${i+1}`, status: ControlStatus.NotImplemented })),
+    ...Array.from({length: 8}, (_, i) => ({ id: `CIS-12.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 12: Gerenciamento de Infraestrutura de Rede', name: `Salvaguarda 12.${i+1}`, description: `Descrição para a Salvaguarda 12.${i+1}`, status: ControlStatus.NotImplemented })),
+    ...Array.from({length: 11}, (_, i) => ({ id: `CIS-13.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 13: Monitoramento e Defesa da Rede', name: `Salvaguarda 13.${i+1}`, description: `Descrição para a Salvaguarda 13.${i+1}`, status: ControlStatus.NotImplemented })),
+    ...Array.from({length: 9}, (_, i) => ({ id: `CIS-14.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 14: Conscientização e Treinamento em Segurança', name: `Salvaguarda 14.${i+1}`, description: `Descrição para a Salvaguarda 14.${i+1}`, status: ControlStatus.NotImplemented })),
+    ...Array.from({length: 7}, (_, i) => ({ id: `CIS-15.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 15: Gerenciamento de Provedores de Serviço', name: `Salvaguarda 15.${i+1}`, description: `Descrição para a Salvaguarda 15.${i+1}`, status: ControlStatus.NotImplemented })),
+    ...Array.from({length: 14}, (_, i) => ({ id: `CIS-16.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 16: Segurança de Software de Aplicação', name: `Salvaguarda 16.${i+1}`, description: `Descrição para a Salvaguarda 16.${i+1}`, status: ControlStatus.NotImplemented })),
+    ...Array.from({length: 9}, (_, i) => ({ id: `CIS-17.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 17: Gerenciamento de Resposta a Incidentes', name: `Salvaguarda 17.${i+1}`, description: `Descrição para a Salvaguarda 17.${i+1}`, status: ControlStatus.NotImplemented })),
+    ...Array.from({length: 5}, (_, i) => ({ id: `CIS-18.${i+1}`, framework: FrameworkName.CIS, family: 'Controle 18: Teste de Penetração', name: `Salvaguarda 18.${i+1}`, description: `Descrição para a Salvaguarda 18.${i+1}`, status: ControlStatus.NotImplemented })),
 ];
 
 
@@ -313,55 +357,100 @@ const RiskHeatmap = ({ risks }) => {
     );
 };
 
-const ComplianceSummaryTable = ({ controls }) => {
+const CircularProgress = ({ percentage, color, size = 100 }) => {
+    const strokeWidth = 10;
+    const radius = (size - strokeWidth) / 2;
+    const circumference = radius * 2 * Math.PI;
+    const offset = circumference - (percentage / 100) * circumference;
+
+    return (
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+            <circle
+                className="text-surface"
+                strokeWidth={strokeWidth}
+                stroke="currentColor"
+                fill="transparent"
+                r={radius}
+                cx={size / 2}
+                cy={size / 2}
+            />
+            <circle
+                className={color}
+                strokeWidth={strokeWidth}
+                strokeDasharray={circumference}
+                strokeDashoffset={offset}
+                strokeLinecap="round"
+                stroke="currentColor"
+                fill="transparent"
+                r={radius}
+                cx={size / 2}
+                cy={size / 2}
+                style={{ transition: 'stroke-dashoffset 0.5s ease-in-out' }}
+            />
+            <text x="50%" y="50%" textAnchor="middle" dy=".3em" className="text-lg font-bold fill-current text-text-primary rotate-90 origin-center">
+                {`${percentage}%`}
+            </text>
+        </svg>
+    );
+};
+
+
+const MaturityAndComplianceScores = ({ controls }) => {
     const summary = useMemo(() => {
         const initial = {
-            [FrameworkName.NIST]: { total: 0, [ControlStatus.FullyImplemented]: 0, [ControlStatus.PartiallyImplemented]: 0, [ControlStatus.NotImplemented]: 0, [ControlStatus.InProgress]: 0 },
-            [FrameworkName.CIS]: { total: 0, [ControlStatus.FullyImplemented]: 0, [ControlStatus.PartiallyImplemented]: 0, [ControlStatus.NotImplemented]: 0, [ControlStatus.InProgress]: 0 },
-            [FrameworkName.LGPD]: { total: 0, [ControlStatus.FullyImplemented]: 0, [ControlStatus.PartiallyImplemented]: 0, [ControlStatus.NotImplemented]: 0, [ControlStatus.InProgress]: 0 },
+            [FrameworkName.NIST]: { total: 0, fully: 0, scores: [] as number[] },
+            [FrameworkName.CIS]: { total: 0, fully: 0, scores: [] as number[] },
+            [FrameworkName.LGPD]: { total: 0, fully: 0, scores: [] as number[] },
         };
 
-        return controls.reduce((acc, control) => {
-            if (acc[control.framework]) {
-                acc[control.framework].total++;
-                if (acc[control.framework][control.status] !== undefined) {
-                    acc[control.framework][control.status]++;
+        controls.forEach(control => {
+            if (control.framework in initial) {
+                initial[control.framework].total++;
+                if (control.status === ControlStatus.FullyImplemented) {
+                    initial[control.framework].fully++;
+                }
+                if (typeof control.processScore === 'number' && typeof control.practiceScore === 'number') {
+                    initial[control.framework].scores.push((control.processScore + control.practiceScore) / 2);
                 }
             }
-            return acc;
-        }, initial);
+        });
+
+        // Fix: Explicitly type 'results' to prevent 'data' from being of type 'unknown' in the map function below.
+        const results: Record<string, { compliance: number; maturity: string }> = {};
+        for (const fw in initial) {
+            const data = initial[fw];
+            const compliance = data.total > 0 ? (data.fully / data.total) * 100 : 0;
+            const maturity = data.scores.length > 0 ? data.scores.reduce((a, b) => a + b, 0) / data.scores.length : 0;
+            results[fw] = { compliance: Math.round(compliance), maturity: maturity.toFixed(1) };
+        }
+        return results;
     }, [controls]);
 
     return (
         <Card className="lg:col-span-4">
-            <h2 className="text-base font-semibold mb-4">Resumo de Conformidade por Framework</h2>
-            <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                    <thead className="bg-surface/50">
-                        <tr>
-                            <th className="p-4 font-semibold text-sm">Framework</th>
-                            <th className="p-4 font-semibold text-center text-green-400 text-sm">Implementados</th>
-                            <th className="p-4 font-semibold text-center text-yellow-400 text-sm">Parcialmente Imp.</th>
-                            <th className="p-4 font-semibold text-center text-red-400 text-sm">Não Implementados</th>
-                            <th className="p-4 font-semibold text-center text-sm">Total de Controles</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {Object.entries(summary).map(([framework, data]: [string, any]) => (
-                            <tr key={framework} className="border-t border-border-color">
-                                <td className="p-4 font-bold text-sm">{framework}</td>
-                                <td className="p-4 text-center font-mono text-sm">{data[ControlStatus.FullyImplemented]}</td>
-                                <td className="p-4 text-center font-mono text-sm">{data[ControlStatus.PartiallyImplemented]}</td>
-                                <td className="p-4 text-center font-mono text-sm">{data[ControlStatus.NotImplemented]}</td>
-                                <td className="p-4 text-center font-mono font-bold text-sm">{data.total}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+            <h2 className="text-base font-semibold mb-4">Maturidade e Conformidade</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {Object.entries(summary).map(([framework, data]) => (
+                    <div key={framework} className="bg-background/50 p-4 rounded-lg flex flex-col items-center">
+                        <h3 className="font-bold text-sm mb-3">{framework}</h3>
+                        <div className="flex items-center justify-around w-full">
+                            <div className="flex flex-col items-center">
+                                <CircularProgress percentage={data.compliance} color="text-primary" size={120} />
+                                <span className="text-xs font-semibold mt-2 text-text-secondary">% Conformidade</span>
+                            </div>
+                            <div className="flex flex-col items-center">
+                                <div className="text-5xl font-bold text-secondary">{data.maturity}</div>
+                                <div className="text-sm text-text-secondary">/ 5.0</div>
+                                <span className="text-xs font-semibold mt-2 text-text-secondary">Score CMM</span>
+                            </div>
+                        </div>
+                    </div>
+                ))}
             </div>
         </Card>
     );
-}
+};
+
 
 const RiskByTypeSummary = ({ risks }) => {
     const summary = useMemo(() => {
@@ -410,10 +499,10 @@ const RiskByTypeSummary = ({ risks }) => {
 
 const DashboardPage = ({ risks, controls }) => {
     const riskStatusCounts = useMemo(() => {
-        return risks.reduce((acc, risk) => {
+        return risks.reduce((acc: Record<RiskStatus, number>, risk) => {
             acc[risk.status] = (acc[risk.status] || 0) + 1;
             return acc;
-        }, {});
+        }, {} as Record<RiskStatus, number>);
     }, [risks]);
 
     return (
@@ -423,7 +512,7 @@ const DashboardPage = ({ risks, controls }) => {
             <Card className="lg:col-span-1 bg-gradient-to-br from-green-500 to-secondary"><h3 className="text-base font-semibold">Riscos Mitigados</h3><p className="text-3xl font-bold">{riskStatusCounts[RiskStatus.Mitigated] || 0}</p></Card>
             <Card className="lg:col-span-1 bg-gradient-to-br from-blue-500 to-primary"><h3 className="text-base font-semibold">Riscos Aceitos</h3><p className="text-3xl font-bold">{riskStatusCounts[RiskStatus.Accepted] || 0}</p></Card>
             
-            <ComplianceSummaryTable controls={controls} />
+            <MaturityAndComplianceScores controls={controls} />
 
             <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 gap-6">
                  <RiskHeatmap risks={risks} />
@@ -1100,11 +1189,25 @@ const ObsolescencePage = ({ items, setItems }) => {
 
 // --- Compliance Page ---
 const ComplianceModal = ({ control, onSave, onClose }) => {
-    const [status, setStatus] = useState(control.status || ControlStatus.NotImplemented);
+    const [formData, setFormData] = useState({
+        status: control.status || ControlStatus.NotImplemented,
+        processScore: control.processScore || '',
+        practiceScore: control.practiceScore || ''
+    });
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        onSave({ ...control, status });
+        onSave({ 
+            ...control, 
+            status: formData.status,
+            processScore: formData.processScore === '' ? undefined : Number(formData.processScore),
+            practiceScore: formData.practiceScore === '' ? undefined : Number(formData.practiceScore),
+        });
     };
 
     return (
@@ -1115,14 +1218,27 @@ const ComplianceModal = ({ control, onSave, onClose }) => {
                     <p className="text-sm"><strong className="text-text-secondary">ID:</strong> {control.id}</p>
                     <p className="text-sm"><strong className="text-text-secondary">Nome:</strong> {control.name}</p>
                     <div>
-                        <label className="block text-xs font-medium mb-1">Status</label>
-                        <select
-                            value={status}
-                            onChange={(e) => setStatus(e.target.value as ControlStatus)}
-                            className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                        >
+                        <label className="block text-xs font-medium mb-1">Status de Conformidade</label>
+                        <select name="status" value={formData.status} onChange={handleChange}
+                            className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm">
                             {Object.values(ControlStatus).map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-medium mb-1">Score de Processo (1-5)</label>
+                            <select name="processScore" value={formData.processScore} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm">
+                                <option value="">N/A</option>
+                                {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                           <label className="block text-xs font-medium mb-1">Score de Prática (1-5)</label>
+                            <select name="practiceScore" value={formData.practiceScore} onChange={handleChange} className="w-full bg-background border border-border-color rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary text-sm">
+                                <option value="">N/A</option>
+                                {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
+                            </select>
+                        </div>
                     </div>
                     <div className="flex justify-end gap-4 pt-4">
                         <button type="button" onClick={onClose} className="bg-surface/50 hover:bg-surface/80 font-semibold py-2 px-4 rounded-lg text-sm">Cancelar</button>
@@ -1150,31 +1266,43 @@ const ComplianceTable = ({ controls, onEdit }) => {
             <table className="w-full text-left table-auto">
                 <thead className="bg-surface/50 text-text-secondary uppercase text-xs">
                     <tr>
-                        <th className="p-4 font-semibold">ID</th>
-                        <th className="p-4 font-semibold">Framework</th>
-                        <th className="p-4 font-semibold">Família/Controle</th>
-                        <th className="p-4 font-semibold">Descrição</th>
-                        <th className="p-4 font-semibold text-center">Status</th>
-                        <th className="p-4 font-semibold text-center">Ações</th>
+                        <th className="p-3 font-semibold">ID</th>
+                        <th className="p-3 font-semibold">Framework</th>
+                        <th className="p-3 font-semibold">Controle</th>
+                        <th className="p-3 font-semibold">Descrição</th>
+                        <th className="p-3 font-semibold text-center">Status</th>
+                        <th className="p-3 font-semibold text-center">Proc.</th>
+                        <th className="p-3 font-semibold text-center">Prát.</th>
+                        <th className="p-3 font-semibold text-center">Score</th>
+                        <th className="p-3 font-semibold text-center">Ações</th>
                     </tr>
                 </thead>
                 <tbody className="text-sm">
-                    {controls.map(control => (
-                        <tr key={control.id} className="border-t border-border-color hover:bg-surface/50">
-                            <td className="p-4 font-mono text-xs">{control.id}</td>
-                            <td className="p-4 text-xs font-bold">{control.framework}</td>
-                            <td className="p-4 font-semibold max-w-sm"><p className="truncate" title={control.name}>{control.name}</p><p className="text-xs text-text-secondary">{control.family}</p></td>
-                            <td className="p-4 text-xs text-text-secondary max-w-md"><p className="truncate" title={control.description}>{control.description}</p></td>
-                            <td className="p-4 text-center">
-                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusClass(control.status)}`}>
-                                    {control.status || 'N/A'}
-                                </span>
-                            </td>
-                            <td className="p-4 text-center">
-                                <button onClick={() => onEdit(control)} className="text-text-secondary hover:text-primary p-1"><Edit size={16} /></button>
-                            </td>
-                        </tr>
-                    ))}
+                    {controls.map(control => {
+                        const geral = (typeof control.processScore === 'number' && typeof control.practiceScore === 'number') 
+                            ? ((control.processScore + control.practiceScore) / 2).toFixed(1) 
+                            : 'N/A';
+
+                        return (
+                            <tr key={control.id} className="border-t border-border-color hover:bg-surface/50">
+                                <td className="p-3 font-mono text-xs">{control.id}</td>
+                                <td className="p-3 text-xs font-bold">{control.framework}</td>
+                                <td className="p-3 font-semibold max-w-sm"><p className="truncate" title={control.name}>{control.name}</p><p className="text-xs text-text-secondary">{control.family}</p></td>
+                                <td className="p-3 text-xs text-text-secondary max-w-md"><p className="truncate" title={control.description}>{control.description}</p></td>
+                                <td className="p-3 text-center">
+                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusClass(control.status)}`}>
+                                        {control.status || 'N/A'}
+                                    </span>
+                                </td>
+                                <td className="p-3 text-center font-mono text-xs">{control.processScore || 'N/A'}</td>
+                                <td className="p-3 text-center font-mono text-xs">{control.practiceScore || 'N/A'}</td>
+                                <td className="p-3 text-center font-mono text-xs font-bold">{geral}</td>
+                                <td className="p-3 text-center">
+                                    <button onClick={() => onEdit(control)} className="text-text-secondary hover:text-primary p-1"><Edit size={16} /></button>
+                                </td>
+                            </tr>
+                        )
+                    })}
                 </tbody>
             </table>
         </div>
@@ -2091,7 +2219,7 @@ const AlertManagementTab = ({ alertRules, setAlertRules, allUsers, allGroups }) 
 // --- Main App Component ---
 
 const App = () => {
-    const [activePage, setActivePage] = useState('Riscos');
+    const [activePage, setActivePage] = useState('Dashboard');
     const [risks, setRisks] = useState(initialRisks);
     const [assets, setAssets] = useState(initialAssets);
     const [dataControls, setDataControls] = useState(mockDataControls);
