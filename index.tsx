@@ -415,7 +415,7 @@ const MaturityAndComplianceScores = ({ controls }) => {
             }
         });
 
-        // Fix: Explicitly type 'results' to prevent 'data' from being of type 'unknown' in the map function below.
+        // FIX: Switched from Object.entries to Object.keys to ensure type safety, preventing 'data' from being inferred as 'unknown'.
         const results: Record<string, { compliance: number; maturity: string }> = {};
         for (const fw in initial) {
             const data = initial[fw];
@@ -430,29 +430,31 @@ const MaturityAndComplianceScores = ({ controls }) => {
         <Card className="lg:col-span-4">
             <h2 className="text-base font-semibold mb-4">Maturidade e Conformidade</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {Object.entries(summary).map(([framework, data]) => (
-                    <div key={framework} className="bg-background/50 p-4 rounded-lg flex flex-col items-center">
-                        <h3 className="font-bold text-sm mb-3">{framework}</h3>
-                        <div className="flex items-center justify-around w-full">
-                            <div className="flex flex-col items-center">
-                                <CircularProgress percentage={data.compliance} color="text-primary" size={120} />
-                                <span className="text-xs font-semibold mt-2 text-text-secondary">% Conformidade</span>
-                            </div>
-                            <div className="flex flex-col items-center">
-                                <div className="text-5xl font-bold text-secondary">{data.maturity}</div>
-                                <div className="text-sm text-text-secondary">/ 5.0</div>
-                                <span className="text-xs font-semibold mt-2 text-text-secondary">Score CMM</span>
+                {Object.keys(summary).map((framework) => {
+                    const data = summary[framework];
+                    return (
+                        <div key={framework} className="bg-background/50 p-4 rounded-lg flex flex-col items-center">
+                            <h3 className="font-bold text-sm mb-3">{framework}</h3>
+                            <div className="flex items-center justify-around w-full">
+                                <div className="flex flex-col items-center">
+                                    <CircularProgress percentage={data.compliance} color="text-primary" size={120} />
+                                    <span className="text-xs font-semibold mt-2 text-text-secondary">% Conformidade</span>
+                                </div>
+                                <div className="flex flex-col items-center">
+                                    <div className="text-5xl font-bold text-secondary">{data.maturity}</div>
+                                    <div className="text-sm text-text-secondary">/ 5.0</div>
+                                    <span className="text-xs font-semibold mt-2 text-text-secondary">Score CMM</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
         </Card>
     );
 };
 
-
-const RiskByTypeSummary = ({ risks }) => {
+const RiskByTypeChart = ({ risks }) => {
     const summary = useMemo(() => {
         const initialSummary = Object.fromEntries(
             Object.values(RiskType).map(type => [type, 0])
@@ -466,57 +468,131 @@ const RiskByTypeSummary = ({ risks }) => {
         }, initialSummary);
     }, [risks]);
 
-    const sortedSummary = Object.entries(summary).sort(([a], [b]) => a.localeCompare(b));
+    // FIX: Cast values to 'number' to allow arithmetic operations, as Object.entries can infer 'unknown'.
+    const sortedSummary = Object.entries(summary).sort(([, a], [, b]) => (b as number) - (a as number));
+    // FIX: Cast mapped 'count' to 'number' as Math.max expects number arguments.
+    const maxCount = Math.max(...sortedSummary.map(([, count]) => count as number), 0) || 1;
+
+    const riskTypeColors: Record<RiskType, string> = {
+        [RiskType.Operational]: 'bg-blue-500',
+        [RiskType.Compliance]: 'bg-indigo-500',
+        [RiskType.Financial]: 'bg-green-500',
+        [RiskType.Strategic]: 'bg-purple-500',
+        [RiskType.Obsolescence]: 'bg-gray-500',
+        [RiskType.Security]: 'bg-red-500',
+    };
 
     return (
         <Card>
             <h2 className="text-base font-semibold mb-4">Riscos por Categoria</h2>
-            <div className="overflow-y-auto" style={{ maxHeight: '300px' }}>
-                <table className="w-full text-left">
-                    <thead className="sticky top-0 bg-surface/95 backdrop-blur-sm">
-                        <tr>
-                            <th className="p-3 font-semibold text-sm">Tipo de Risco</th>
-                            <th className="p-3 font-semibold text-right text-sm">Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {sortedSummary.map(([type, count]) => (
-                            <tr key={type} className="border-t border-border-color">
-                                <td className="p-3 text-sm">{type}</td>
-                                <td className="p-3 text-right font-mono font-bold text-sm">{count}</td>
-                            </tr>
-                        ))}
-                         <tr className="border-t-2 border-border-color bg-surface/50">
-                             <td className="p-3 font-bold text-sm">Total Geral</td>
-                             <td className="p-3 text-right font-mono font-extrabold text-sm">{risks.length}</td>
-                         </tr>
-                    </tbody>
-                </table>
+            <div className="space-y-3">
+                {sortedSummary.map(([type, count]) => (
+                    <div key={type} className="grid grid-cols-4 items-center gap-2 text-sm">
+                        <span className="col-span-1 text-text-secondary truncate pr-2" title={type}>{type}</span>
+                        <div className="col-span-3 flex items-center gap-2">
+                           <div className="w-full bg-surface/50 rounded-full h-4">
+                               <div
+                                   className={`${riskTypeColors[type as RiskType]} h-4 rounded-full transition-all duration-500 ease-out`}
+                                   style={{ width: `${((count as number) / maxCount) * 100}%` }}
+                               ></div>
+                           </div>
+                           <span className="font-bold font-mono w-8 text-right">{count as number}</span>
+                        </div>
+                    </div>
+                ))}
             </div>
         </Card>
     );
 };
 
-const DashboardPage = ({ risks, controls }) => {
+const ObsolescenceDashboardCard = ({ items }) => {
+    const summary = useMemo(() => {
+        const today = new Date();
+        const obsoleteItems = items.filter(item => new Date(item.endOfSupportDate) < today);
+        const totalItems = items.length;
+        const overallPercentage = totalItems > 0 ? Math.round((obsoleteItems.length / totalItems) * 100) : 0;
+
+        const byCategory = Object.values(ObsolescenceAssetType).reduce((acc, type) => {
+            const categoryItems = items.filter(item => item.assetType === type);
+            const categoryObsolete = obsoleteItems.filter(item => item.assetType === type);
+            acc[type] = {
+                total: categoryItems.length,
+                obsolete: categoryObsolete.length,
+            };
+            return acc;
+        }, {} as Record<ObsolescenceAssetType, { total: number, obsolete: number }>);
+        
+        return { overallPercentage, byCategory };
+    }, [items]);
+    
+    return (
+        <Card>
+            <h2 className="text-base font-semibold mb-4">Resumo de Obsolescência</h2>
+            <div className="flex flex-col gap-6">
+                <div className="flex items-center gap-6">
+                    <div className="flex-shrink-0">
+                        <CircularProgress percentage={summary.overallPercentage} color="text-danger" size={120} />
+                    </div>
+                    <div>
+                        <h3 className="font-bold text-lg">Obsolescência Geral</h3>
+                        <p className="text-text-secondary text-sm">Percentual de itens com suporte encerrado.</p>
+                    </div>
+                </div>
+                <div>
+                     <h3 className="font-semibold text-sm mb-3">Obsoletos por Categoria</h3>
+                     <div className="space-y-3">
+                        {/* FIX: Switched to Object.keys and added a type cast to ensure 'data' is correctly typed and its properties can be accessed safely. */}
+                        {Object.keys(summary.byCategory).map((type) => {
+                            const data = summary.byCategory[type as ObsolescenceAssetType];
+                            return (
+                                <div key={type} className="text-xs">
+                                    <div className="flex justify-between items-center mb-1">
+                                        <span className="font-medium text-text-secondary">{type}</span>
+                                        <span className="font-mono">{data.obsolete} / {data.total}</span>
+                                    </div>
+                                    <div className="w-full bg-surface/50 rounded-full h-2">
+                                        <div
+                                           className="bg-danger h-2 rounded-full"
+                                           style={{ width: data.total > 0 ? `${(data.obsolete / data.total) * 100}%` : '0%' }}
+                                        ></div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                     </div>
+                </div>
+            </div>
+        </Card>
+    );
+};
+
+
+const DashboardPage = ({ risks, controls, obsolescenceItems }) => {
     const riskStatusCounts = useMemo(() => {
+        const initialCounts = Object.values(RiskStatus).reduce((acc, status) => {
+            acc[status] = 0;
+            return acc;
+        }, {} as Record<RiskStatus, number>);
+
         return risks.reduce((acc: Record<RiskStatus, number>, risk) => {
             acc[risk.status] = (acc[risk.status] || 0) + 1;
             return acc;
-        }, {} as Record<RiskStatus, number>);
+        }, initialCounts);
     }, [risks]);
 
     return (
         <div className="p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <Card className="lg:col-span-1 bg-gradient-to-br from-red-500 to-danger"><h3 className="text-base font-semibold">Riscos Abertos</h3><p className="text-3xl font-bold">{riskStatusCounts[RiskStatus.Open] || 0}</p></Card>
-            <Card className="lg:col-span-1 bg-gradient-to-br from-yellow-500 to-orange-500"><h3 className="text-base font-semibold">Em Andamento</h3><p className="text-3xl font-bold">{riskStatusCounts[RiskStatus.InProgress] || 0}</p></Card>
-            <Card className="lg:col-span-1 bg-gradient-to-br from-green-500 to-secondary"><h3 className="text-base font-semibold">Riscos Mitigados</h3><p className="text-3xl font-bold">{riskStatusCounts[RiskStatus.Mitigated] || 0}</p></Card>
-            <Card className="lg:col-span-1 bg-gradient-to-br from-blue-500 to-primary"><h3 className="text-base font-semibold">Riscos Aceitos</h3><p className="text-3xl font-bold">{riskStatusCounts[RiskStatus.Accepted] || 0}</p></Card>
+            <Card className="lg:col-span-1 bg-gradient-to-br from-red-500 to-danger"><h3 className="text-base font-semibold">Riscos Abertos</h3><p className="text-3xl font-bold">{riskStatusCounts[RiskStatus.Open]}</p></Card>
+            <Card className="lg:col-span-1 bg-gradient-to-br from-yellow-500 to-orange-500"><h3 className="text-base font-semibold">Em Andamento</h3><p className="text-3xl font-bold">{riskStatusCounts[RiskStatus.InProgress]}</p></Card>
+            <Card className="lg:col-span-1 bg-gradient-to-br from-green-500 to-secondary"><h3 className="text-base font-semibold">Riscos Mitigados</h3><p className="text-3xl font-bold">{riskStatusCounts[RiskStatus.Mitigated]}</p></Card>
+            <Card className="lg:col-span-1 bg-gradient-to-br from-blue-500 to-primary"><h3 className="text-base font-semibold">Riscos Aceitos</h3><p className="text-3xl font-bold">{riskStatusCounts[RiskStatus.Accepted]}</p></Card>
             
             <MaturityAndComplianceScores controls={controls} />
 
-            <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="lg:col-span-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
                  <RiskHeatmap risks={risks} />
-                 <RiskByTypeSummary risks={risks} />
+                 <RiskByTypeChart risks={risks} />
+                 <ObsolescenceDashboardCard items={obsolescenceItems} />
             </div>
         </div>
     );
@@ -2235,7 +2311,7 @@ const App = () => {
 
     const renderPage = () => {
         switch (activePage) {
-            case 'Dashboard': return <DashboardPage risks={risks} controls={complianceControls} />;
+            case 'Dashboard': return <DashboardPage risks={risks} controls={complianceControls} obsolescenceItems={obsolescenceItems} />;
             case 'Riscos': return <RisksPage risks={risks} setRisks={setRisks} highlightedItem={highlightedItem} setHighlightedItem={setHighlightedItem} />;
             case 'Ativos': return <AssetsPage assets={assets} setAssets={setAssets} highlightedItem={highlightedItem} setHighlightedItem={setHighlightedItem} />;
             case 'Obsolescência': return <ObsolescencePage items={obsolescenceItems} setItems={setObsolescenceItems} />;
@@ -2251,7 +2327,7 @@ const App = () => {
                             appData={{ risks, assets, dataControls, complianceControls, obsolescenceItems }}
                             setAppData={{ setRisks, setAssets, setDataControls, setComplianceControls, setObsolescenceItems }}
                         />;
-            default: return <DashboardPage risks={risks} controls={complianceControls} />;
+            default: return <DashboardPage risks={risks} controls={complianceControls} obsolescenceItems={obsolescenceItems} />;
         }
     };
 
