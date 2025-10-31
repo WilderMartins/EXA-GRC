@@ -18,12 +18,18 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import {
-  ChevronDown, X, Sidebar, Home, Shield, Database, AlertTriangle, ChevronsUpDown, Settings, Users, LogOut, PlusCircle, Edit, Trash2, Eye, Sun, Moon, CheckCircle, AlertCircle, Info
+  getAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  onAuthStateChanged,
+  signOut,
+} from 'firebase/auth';
+import {
+  ChevronDown, X, Sidebar, Home, Shield, Database, AlertTriangle, ChevronsUpDown, Settings, Users, LogOut, PlusCircle, Edit, Trash2, Eye, Sun, Moon, CheckCircle, AlertCircle, Info, Copy
 } from 'lucide-react';
 
 // --- TYPES AND INTERFACES ---
-// Keep IDs as strings for Firestore compatibility
-interface User { id: string; name: string; email: string; role: 'Admin' | 'Analyst'; passwordHash: string; }
+interface User { id: string; name: string; email: string; role: 'Admin' | 'Analyst'; }
 interface Asset { id: string; name: string; type: string; owner: string; criticality: 'Low' | 'Medium' | 'High' | 'Critical'; }
 interface Threat { id: string; name: string; description: string; type: 'Malicious' | 'Accidental' | 'Environmental'; }
 interface Control { id: string; name: string; description: string; family: string; framework: 'NIST CSF' | 'CIS Controls'; }
@@ -44,7 +50,7 @@ interface FirebaseConfig { apiKey: string; authDomain: string; projectId: string
 // --- ICONS WRAPPER ---
 const Icon = ({ name, ...props }) => {
   const LucideIcon = {
-    ChevronDown, X, Sidebar, Home, Shield, Database, AlertTriangle, ChevronsUpDown, Settings, Users, LogOut, PlusCircle, Edit, Trash2, Eye, Sun, Moon, CheckCircle, AlertCircle, Info
+    ChevronDown, X, Sidebar, Home, Shield, Database, AlertTriangle, ChevronsUpDown, Settings, Users, LogOut, PlusCircle, Edit, Trash2, Eye, Sun, Moon, CheckCircle, AlertCircle, Info, Copy
   }[name];
   return LucideIcon ? <LucideIcon {...props} /> : null;
 };
@@ -73,8 +79,8 @@ const firebaseApiClient = (db) => ({
   remove: async (collectionName, id) => {
     await deleteDoc(doc(db, collectionName, id));
   },
-  findUserByEmail: async (email) => {
-    const q = query(collection(db, 'users'), where('email', '==', email));
+  getUserProfile: async (userId) => {
+    const q = query(collection(db, 'users'), where('uid', '==', userId));
     const querySnapshot = await getDocs(q);
     if (querySnapshot.empty) return null;
     const userDoc = querySnapshot.docs[0];
@@ -94,7 +100,7 @@ const useDb = () => useContext(DbContext);
 const useToast = () => useContext(ToastContext);
 const useTheme = () => useContext(ThemeContext);
 
-// --- UI COMPONENTS ---
+// --- UI COMPONENTS (UNCHANGED) ---
 const Tooltip = ({ children, text }) => (
   <div className="relative group flex items-center">
     {children}
@@ -199,26 +205,43 @@ const EmptyState = ({ title, message, action }) => (
 );
 
 
-// --- PROVIDERS ---
+// --- PROVIDERS (REFACTORED) ---
 const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(JSON.parse(localStorage.getItem('user')));
+  const { auth, api } = useDb();
+  const [user, setUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const login = (userData) => {
-    localStorage.setItem('user', JSON.stringify(userData));
-    setUser(userData);
-  };
-  const logout = () => {
-    localStorage.removeItem('user');
-    setUser(null);
-  };
-  const value = { user, login, logout, isAuthenticated: !!user };
+  useEffect(() => {
+    if (!auth || !api) {
+      setIsLoading(false);
+      return;
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const userProfile = await api.getUserProfile(firebaseUser.uid);
+        setUser({ ...firebaseUser, ...userProfile });
+      } else {
+        setUser(null);
+      }
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [auth, api]);
+
+  const logout = () => signOut(auth);
+
+  const value = { user, logout, isAuthenticated: !!user, isLoading };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 const DbProvider = ({ children }) => {
   const [db, setDb] = useState(null);
+  const [auth, setAuth] = useState(null);
   const [api, setApi] = useState(null);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     const configString = localStorage.getItem('firebaseConfig');
@@ -227,15 +250,19 @@ const DbProvider = ({ children }) => {
         const config = JSON.parse(configString);
         const app = initializeApp(config);
         const firestore = getFirestore(app);
+        const firebaseAuth = getAuth(app);
         setDb(firestore);
+        setAuth(firebaseAuth);
         setApi(firebaseApiClient(firestore));
       } catch (error) {
         console.error("Failed to initialize Firebase:", error);
+        localStorage.clear(); // Clear corrupted config
       }
     }
+    setIsReady(true); // Set ready regardless of config existence
   }, []);
 
-  return <DbContext.Provider value={{ db, api, isDbReady: !!db }}>{children}</DbContext.Provider>;
+  return <DbContext.Provider value={{ db, auth, api, isDbReady: isReady }}>{children}</DbContext.Provider>;
 };
 
 const ThemeProvider = ({ children }) => {
@@ -255,8 +282,7 @@ const ThemeProvider = ({ children }) => {
     return <ThemeContext.Provider value={{ theme, toggleTheme }}>{children}</ThemeContext.Provider>;
 };
 
-
-// --- LAYOUT COMPONENTS ---
+// --- LAYOUT COMPONENTS (UNCHANGED) ---
 const Sidebar = ({ isSidebarOpen, setSidebarOpen }) => {
   const navItems = [
     { name: 'Dashboard', icon: 'Home', path: '#/' },
@@ -332,12 +358,11 @@ const Layout = ({ children }) => {
   );
 };
 
-// --- PAGES ---
+// --- PAGES (UNCHANGED) ---
 const Dashboard = () => (
   <div>
     <h1 className="text-3xl font-bold text-text-primary mb-6">Dashboard de Gestão de Riscos</h1>
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-       {/* Placeholder cards */}
       <div className="bg-surface p-6 rounded-lg border border-border-color">
         <h2 className="text-lg font-semibold text-text-secondary">Riscos Abertos</h2>
         <p className="text-4xl font-bold text-primary mt-2">12</p>
@@ -567,7 +592,7 @@ const PlaceholderPage = ({ title }) => (
 );
 
 
-// --- ROUTING ---
+// --- ROUTING (UNCHANGED) ---
 const Router = () => {
   const [hash, setHash] = useState(window.location.hash);
   useEffect(() => {
@@ -589,10 +614,9 @@ const Router = () => {
   return routes[hash] || routes['#/'];
 };
 
-// --- AUTH AND INITIALIZATION FLOW ---
+// --- AUTH AND INITIALIZATION FLOW (REFACTORED) ---
 const Login = () => {
-    const { login } = useAuth();
-    const { api, isDbReady } = useDb();
+    const { auth, isDbReady } = useDb();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
@@ -601,24 +625,17 @@ const Login = () => {
     const handleLogin = async (e) => {
         e.preventDefault();
         if (!isDbReady) {
-            setError('O banco de dados não está pronto. Verifique a configuração.');
-            return;
+          setError("A conexão com o banco de dados ainda não está pronta.");
+          return;
         }
         setIsLoading(true);
         setError('');
         
         try {
-            const user = await api.findUserByEmail(email);
-            // NOTE: In a real app, use a robust hashing library like bcrypt.
-            // This is a simplified check for demonstration.
-            if (user && user.passwordHash === password) {
-                login({ id: user.id, name: user.name, email: user.email, role: user.role });
-            } else {
-                setError('Email ou senha inválidos.');
-            }
+            await signInWithEmailAndPassword(auth, email, password);
         } catch (err) {
+            setError('Email ou senha inválidos.');
             console.error(err);
-            setError('Ocorreu um erro ao tentar fazer login.');
         } finally {
             setIsLoading(false);
         }
@@ -639,7 +656,7 @@ const Login = () => {
                         <input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="w-full p-2 mt-1 text-gray-300 bg-background border border-border-color rounded-md focus:outline-none focus:ring-2 focus:ring-primary" />
                     </div>
                     {error && <p className="text-sm text-center text-danger">{error}</p>}
-                    <button type="submit" disabled={isLoading} className="w-full py-2 px-4 bg-primary text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50">
+                    <button type="submit" disabled={isLoading || !isDbReady} className="w-full py-2 px-4 bg-primary text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 flex justify-center">
                         {isLoading ? <Spinner /> : 'Entrar'}
                     </button>
                 </form>
@@ -649,50 +666,65 @@ const Login = () => {
 };
 
 const SetupWizard = ({ onSetupComplete }) => {
-    const [step, setStep] = useState(1); // 1: Firebase, 2: Admin, 3: Done
+    const [step, setStep] = useState(1); // 1: Firebase, 2: Admin, 3: Security, 4: Done
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [config, setConfig] = useState('');
     const [admin, setAdmin] = useState({ name: '', email: '', password: '' });
     const addToast = useToast();
 
+    const securityRules = `rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Apenas usuários autenticados podem ler/escrever nos seus próprios dados
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    // Apenas usuários autenticados podem ler/escrever em outras coleções
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}`;
+
     const testFirebaseConnection = async (firebaseConfig) => {
+        setIsLoading(true);
+        setError('');
         try {
-            const tempApp = initializeApp(firebaseConfig, `test-app-${Date.now()}`);
+            // Use a unique name for the temporary app to avoid conflicts
+            const tempAppName = `test-app-${Date.now()}`;
+            const tempApp = initializeApp(firebaseConfig, tempAppName);
             const tempDb = getFirestore(tempApp);
-            // Attempt a simple read operation. Let's try to access a non-existent doc. This just tests connectivity and permissions.
+            // This is a lightweight check for connectivity and config validity.
             await getDocs(collection(tempDb, `__test_connection__`));
+            setIsLoading(false);
             return true;
         } catch (e) {
             console.error("Firebase connection test failed:", e);
-            if (e.message.includes("permission-denied")) {
-              setError("Erro: As regras de segurança do Firestore não permitem leitura/escrita. Verifique suas regras no console do Firebase.");
-            } else if (e.message.includes("invalid-api-key")) {
-              setError("Erro: A chave de API na configuração parece ser inválida.");
+            if (e.code === 'permission-denied') {
+              setError("Conexão bem-sucedida, mas as regras de segurança do Firestore estão bloqueando o acesso. Para a instalação, use o 'modo de teste'.");
+            } else if (e.code === 'auth/invalid-api-key') {
+              setError("Erro: A 'apiKey' na configuração parece ser inválida.");
             } else {
-              setError("Erro: Não foi possível conectar ao Firebase. Verifique o objeto de configuração e a conectividade de rede.");
+              setError(`Erro de conexão: ${e.message}. Verifique o objeto de configuração.`);
             }
+            setIsLoading(false);
             return false;
         }
     };
     
     const handleFirebaseSubmit = async (e) => {
         e.preventDefault();
-        setIsLoading(true);
-        setError('');
         try {
             const parsedConfig = JSON.parse(config);
-            if (!await testFirebaseConnection(parsedConfig)) {
-                setIsLoading(false);
-                return;
+            if (await testFirebaseConnection(parsedConfig)) {
+                localStorage.setItem('firebaseConfig', config);
+                addToast('Conexão com o Firebase bem-sucedida!', 'success');
+                setStep(2);
             }
-            localStorage.setItem('firebaseConfig', config);
-            addToast('Conexão com o Firebase bem-sucedida!', 'success');
-            setStep(2);
         } catch (err) {
             setError('O texto inserido não é um objeto JSON de configuração do Firebase válido.');
         }
-        setIsLoading(false);
     };
 
     const handleAdminSubmit = async (e) => {
@@ -702,67 +734,63 @@ const SetupWizard = ({ onSetupComplete }) => {
         try {
             const configString = localStorage.getItem('firebaseConfig');
             const firebaseConfig = JSON.parse(configString);
-            const app = initializeApp(firebaseConfig);
+            const app = initializeApp(firebaseConfig, 'setup-app');
             const db = getFirestore(app);
+            const auth = getAuth(app);
             
-            // Seed initial data
+            const userCredential = await createUserWithEmailAndPassword(auth, admin.email, admin.password);
+            const user = userCredential.user;
+
             const batch = writeBatch(db);
+            // Seed data...
             const collections = {
-                assets: [
-                    { name: 'Servidor de Aplicação Web', type: 'Servidor', owner: 'TI', criticality: 'High' },
-                    { name: 'Banco de Dados de Clientes', type: 'Banco de Dados', owner: 'Negócios', criticality: 'Critical' },
-                ],
-                threats: [
-                    { name: 'Ataque de Ransomware', description: 'Software malicioso que criptografa dados e exige resgate.', type: 'Malicious' },
-                    { name: 'Falha de Hardware', description: 'Componente físico do servidor falha inesperadamente.', type: 'Accidental' },
-                ],
-                controls: [
-                    { name: 'Backup e Recuperação', description: 'Manter cópias de segurança dos dados e ter um plano para restaurá-los.', family: 'Recuperação', framework: 'NIST CSF' },
-                    { name: 'Controle de Acesso', description: 'Limitar o acesso a sistemas e dados apenas a usuários autorizados.', family: 'Proteção', framework: 'NIST CSF' },
-                ]
+                assets: [{ name: 'Servidor Web', type: 'Servidor', owner: 'TI', criticality: 'High' }],
+                threats: [{ name: 'Ataque de Ransomware', description: '...', type: 'Malicious' }],
+                controls: [{ name: 'Backup e Recuperação', description: '...', family: 'Recuperação', framework: 'NIST CSF' }]
             };
+            Object.entries(collections).forEach(([name, data]) => {
+                data.forEach(item => batch.set(doc(collection(db, name)), item));
+            });
 
-            for (const [collectionName, data] of Object.entries(collections)) {
-                for (const item of data) {
-                    const docRef = doc(collection(db, collectionName));
-                    batch.set(docRef, item);
-                }
-            }
-
-            // Create admin user
-            const userRef = doc(collection(db, 'users'));
-            batch.set(userRef, { name: admin.name, email: admin.email, passwordHash: admin.password, role: 'Admin' });
+            // Create user profile
+            const userRef = doc(collection(db, 'users'), user.uid); // Use UID as doc ID
+            batch.set(userRef, { uid: user.uid, name: admin.name, email: admin.email, role: 'Admin' });
             
             await batch.commit();
 
-            addToast('Administrador e dados iniciais criados com sucesso!', 'success');
-            localStorage.setItem('isSetupComplete', 'true');
+            addToast('Administrador criado com sucesso!', 'success');
             setStep(3);
         } catch (err) {
             console.error(err);
-            setError('Ocorreu um erro ao criar o administrador e os dados iniciais.');
+            setError(`Erro ao criar administrador: ${err.message}. O email já pode estar em uso.`);
         }
         setIsLoading(false);
     };
 
-    const Stepper = () => (
-      <div className="flex items-center justify-center mb-8">
-        <div className="flex items-center">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step >= 1 ? 'bg-primary text-white' : 'bg-gray-600 text-gray-400'}`}>1</div>
-          <span className={`ml-2 ${step >= 1 ? 'text-primary' : 'text-text-secondary'}`}>Firebase</span>
-        </div>
-        <div className={`h-0.5 w-16 mx-2 ${step >= 2 ? 'bg-primary' : 'bg-gray-600'}`}></div>
-        <div className="flex items-center">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step >= 2 ? 'bg-primary text-white' : 'bg-gray-600 text-gray-400'}`}>2</div>
-          <span className={`ml-2 ${step >= 2 ? 'text-primary' : 'text-text-secondary'}`}>Administrador</span>
-        </div>
-        <div className={`h-0.5 w-16 mx-2 ${step >= 3 ? 'bg-primary' : 'bg-gray-600'}`}></div>
-        <div className="flex items-center">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step >= 3 ? 'bg-primary text-white' : 'bg-gray-600 text-gray-400'}`}>✓</div>
-          <span className={`ml-2 ${step >= 3 ? 'text-primary' : 'text-text-secondary'}`}>Concluído</span>
-        </div>
-      </div>
-    );
+    const handleSecuritySubmit = () => {
+        localStorage.setItem('isSetupComplete', 'true');
+        addToast('Instalação finalizada!', 'success');
+        setStep(4);
+    }
+
+    const Stepper = () => {
+        const steps = ['Firebase', 'Administrador', 'Segurança', 'Concluído'];
+        return (
+            <div className="flex items-center justify-center mb-8">
+                {steps.map((name, index) => (
+                    <React.Fragment key={name}>
+                        <div className="flex items-center">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step > index ? 'bg-primary text-white' : 'bg-gray-600 text-gray-400'}`}>
+                                {step > index + 1 ? '✓' : index + 1}
+                            </div>
+                            <span className={`ml-2 ${step > index ? 'text-primary' : 'text-text-secondary'}`}>{name}</span>
+                        </div>
+                        {index < steps.length - 1 && <div className={`h-0.5 w-8 mx-2 ${step > index + 1 ? 'bg-primary' : 'bg-gray-600'}`}></div>}
+                    </React.Fragment>
+                ))}
+            </div>
+        );
+    };
 
     return (
         <div className="flex items-center justify-center min-h-screen bg-background">
@@ -771,12 +799,12 @@ const SetupWizard = ({ onSetupComplete }) => {
                 <Stepper />
                 {step === 1 && (
                     <form onSubmit={handleFirebaseSubmit}>
-                        <h2 className="text-xl font-semibold text-center text-text-primary mb-4">1. Conectar ao Firebase</h2>
-                        <p className="text-center text-text-secondary mb-6">Cole o objeto de configuração do Firebase do seu projeto. Você pode encontrá-lo nas configurações do projeto no console do Firebase.</p>
+                        <h2 className="text-xl font-semibold text-center text-text-primary mb-2">1. Conectar ao Firebase</h2>
+                        <p className="text-center text-text-secondary mb-6">Cole o objeto de configuração do seu projeto Firebase. Assegure-se que o Firestore está no "modo de teste" para esta etapa.</p>
                         <textarea value={config} onChange={e => setConfig(e.target.value)} rows="8" placeholder='{ apiKey: "...", authDomain: "...", ... }' className="w-full p-2 text-gray-300 bg-background border border-border-color rounded-md font-mono text-sm"></textarea>
                         {error && <p className="text-sm text-center text-danger mt-4">{error}</p>}
-                        <button type="submit" disabled={isLoading} className="w-full mt-6 py-2 px-4 bg-primary text-white rounded-md hover:bg-blue-700 disabled:opacity-50">
-                            {isLoading ? 'Testando...' : 'Conectar e Continuar'}
+                        <button type="submit" disabled={isLoading} className="w-full mt-6 py-2 px-4 bg-primary text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex justify-center">
+                            {isLoading ? <Spinner/> : 'Conectar e Continuar'}
                         </button>
                     </form>
                 )}
@@ -787,19 +815,41 @@ const SetupWizard = ({ onSetupComplete }) => {
                         <div className="space-y-4">
                             <input type="text" placeholder="Nome Completo" value={admin.name} onChange={e => setAdmin({...admin, name: e.target.value})} required className="w-full p-2 bg-background border border-border-color rounded-md" />
                             <input type="email" placeholder="Email" value={admin.email} onChange={e => setAdmin({...admin, email: e.target.value})} required className="w-full p-2 bg-background border border-border-color rounded-md" />
-                            <input type="password" placeholder="Senha" value={admin.password} onChange={e => setAdmin({...admin, password: e.target.value})} required className="w-full p-2 bg-background border border-border-color rounded-md" />
+                            <input type="password" placeholder="Senha (mínimo 6 caracteres)" value={admin.password} onChange={e => setAdmin({...admin, password: e.target.value})} required className="w-full p-2 bg-background border border-border-color rounded-md" />
                         </div>
                          {error && <p className="text-sm text-center text-danger mt-4">{error}</p>}
-                        <button type="submit" disabled={isLoading} className="w-full mt-6 py-2 px-4 bg-primary text-white rounded-md hover:bg-blue-700 disabled:opacity-50">
-                            {isLoading ? 'Criando...' : 'Criar Administrador e Finalizar'}
+                        <button type="submit" disabled={isLoading} className="w-full mt-6 py-2 px-4 bg-primary text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex justify-center">
+                           {isLoading ? <Spinner /> : 'Criar Administrador'}
                         </button>
                     </form>
                 )}
                 {step === 3 && (
+                    <div>
+                        <h2 className="text-xl font-semibold text-center text-text-primary mb-2">3. Proteger seu Banco de Dados</h2>
+                        <p className="text-text-secondary mb-4 text-center">
+                            Esta é a etapa mais importante. Para proteger seus dados, você <span className="font-bold text-danger">PRECISA</span> atualizar as regras de segurança do Firestore.
+                        </p>
+                        <div className="bg-background p-4 rounded-md border border-border-color mb-4">
+                           <p className="text-sm text-text-secondary mb-2">1. Acesse o <a href={`https://console.firebase.google.com/project/${JSON.parse(config)?.projectId}/firestore/rules`} target="_blank" rel="noopener noreferrer" className="text-primary underline">Console do Firebase</a>.</p>
+                           <p className="text-sm text-text-secondary mb-2">2. Vá para a seção <strong>Firestore Database &gt; Regras</strong>.</p>
+                           <p className="text-sm text-text-secondary">3. Substitua as regras existentes pelo código abaixo e clique em <strong>Publicar</strong>.</p>
+                        </div>
+                        <div className="relative bg-background p-4 rounded-md font-mono text-sm border border-border-color">
+                            <button onClick={() => { navigator.clipboard.writeText(securityRules); addToast('Regras copiadas!', 'success'); }} className="absolute top-2 right-2 p-1 text-text-secondary hover:text-primary">
+                                <Icon name="Copy" size={18}/>
+                            </button>
+                            <pre><code>{securityRules}</code></pre>
+                        </div>
+                        <button onClick={handleSecuritySubmit} className="w-full mt-6 py-2 px-4 bg-secondary text-white rounded-md hover:bg-green-700">
+                            Já atualizei as regras, finalizar instalação
+                        </button>
+                    </div>
+                )}
+                {step === 4 && (
                     <div className="text-center">
                         <CheckCircle className="mx-auto h-16 w-16 text-secondary mb-4" />
                         <h2 className="text-2xl font-bold text-text-primary mb-2">Instalação Concluída!</h2>
-                        <p className="text-text-secondary mb-6">A plataforma EXA GRC foi configurada com sucesso. Você pode agora fazer login com a conta de administrador que acabou de criar.</p>
+                        <p className="text-text-secondary mb-6">A plataforma EXA GRC foi configurada com sucesso e suas regras de segurança foram atualizadas.</p>
                         <button onClick={onSetupComplete} className="py-2 px-8 bg-primary text-white rounded-md hover:bg-blue-700">
                             Ir para o Login
                         </button>
@@ -810,21 +860,20 @@ const SetupWizard = ({ onSetupComplete }) => {
     );
 };
 
-
 const App = () => {
   const [isSetupComplete, setIsSetupComplete] = useState(localStorage.getItem('isSetupComplete') === 'true');
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
   const { isDbReady } = useDb();
 
   if (!isSetupComplete) {
       return <SetupWizard onSetupComplete={() => { setIsSetupComplete(true); window.location.reload(); }} />;
   }
   
-  if (!isDbReady && isSetupComplete) {
+  if (!isDbReady || isLoading) {
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-background text-text-primary">
             <Spinner />
-            <p className="mt-4">Conectando ao banco de dados...</p>
+            <p className="mt-4">Carregando...</p>
         </div>
     );
   }
@@ -839,13 +888,13 @@ if (container) {
   root.render(
     <React.StrictMode>
       <ToastProvider>
-        <ThemeProvider>
-          <DbProvider>
-            <AuthProvider>
-              <App />
-            </AuthProvider>
-          </DbProvider>
-        </ThemeProvider>
+        <DbProvider>
+            <ThemeProvider>
+              <AuthProvider>
+                <App />
+              </AuthProvider>
+            </ThemeProvider>
+        </DbProvider>
       </ToastProvider>
     </React.StrictMode>
   );
