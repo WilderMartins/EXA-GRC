@@ -3,6 +3,7 @@ import React, { useState, useEffect, createContext, useContext, useRef, useCallb
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI } from "@google/genai";
 import { initializeApp } from 'firebase/app';
+import { firebaseConfig } from './firebaseConfig';
 import {
   getFirestore,
   doc,
@@ -24,8 +25,11 @@ import {
   onAuthStateChanged,
   signOut,
 } from 'firebase/auth';
+
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
-  ChevronDown, X, Sidebar, Home, Shield, Database, AlertTriangle, ChevronsUpDown, Settings, Users, LogOut, PlusCircle, Edit, Trash2, Eye, Sun, Moon, CheckCircle, AlertCircle, Info, Copy
+  ChevronDown, X, Sidebar as SidebarIcon, Home, Shield, Database, AlertTriangle, ChevronsUpDown, Settings, Users, LogOut, PlusCircle, Edit, Trash2, Eye, Sun, Moon, CheckCircle, AlertCircle, Info, Copy
+
 } from 'lucide-react';
 
 // --- TYPES AND INTERFACES ---
@@ -50,7 +54,7 @@ interface FirebaseConfig { apiKey: string; authDomain: string; projectId: string
 // --- ICONS WRAPPER ---
 const Icon = ({ name, ...props }) => {
   const LucideIcon = {
-    ChevronDown, X, Sidebar, Home, Shield, Database, AlertTriangle, ChevronsUpDown, Settings, Users, LogOut, PlusCircle, Edit, Trash2, Eye, Sun, Moon, CheckCircle, AlertCircle, Info, Copy
+    ChevronDown, X, SidebarIcon, Home, Shield, Database, AlertTriangle, ChevronsUpDown, Settings, Users, LogOut, PlusCircle, Edit, Trash2, Eye, Sun, Moon, CheckCircle, AlertCircle, Info, Copy
   }[name];
   return LucideIcon ? <LucideIcon {...props} /> : null;
 };
@@ -240,29 +244,43 @@ const AuthProvider = ({ children }) => {
 const DbProvider = ({ children }) => {
   const [db, setDb] = useState(null);
   const [auth, setAuth] = useState(null);
+  const [functions, setFunctions] = useState(null);
   const [api, setApi] = useState(null);
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
+    let config;
     const configString = localStorage.getItem('firebaseConfig');
     if (configString) {
       try {
-        const config = JSON.parse(configString);
+        config = JSON.parse(configString);
+      } catch (error) {
+        console.error("Failed to parse firebaseConfig from localStorage:", error);
+        localStorage.clear();
+      }
+    } else {
+      config = firebaseConfig;
+    }
+
+    if (config) {
+      try {
         const app = initializeApp(config);
         const firestore = getFirestore(app);
         const firebaseAuth = getAuth(app);
+        const firebaseFunctions = getFunctions(app);
         setDb(firestore);
         setAuth(firebaseAuth);
+        setFunctions(firebaseFunctions);
         setApi(firebaseApiClient(firestore));
       } catch (error) {
         console.error("Failed to initialize Firebase:", error);
         localStorage.clear(); // Clear corrupted config
       }
     }
-    setIsReady(true); // Set ready regardless of config existence
+    setIsReady(true);
   }, []);
 
-  return <DbContext.Provider value={{ db, auth, api, isDbReady: isReady }}>{children}</DbContext.Provider>;
+  return <DbContext.Provider value={{ db, auth, functions, api, isDbReady: isReady }}>{children}</DbContext.Provider>;
 };
 
 const ThemeProvider = ({ children }) => {
@@ -299,7 +317,7 @@ const Sidebar = ({ isSidebarOpen, setSidebarOpen }) => {
       <div className={`flex items-center border-b border-border-color p-4 ${isSidebarOpen ? 'justify-between' : 'justify-center'}`}>
         {isSidebarOpen && <h1 className="text-xl font-bold text-primary">EXA GRC</h1>}
         <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 rounded-md hover:bg-gray-700">
-          <Icon name="Sidebar" size={24} />
+          <Icon name="SidebarIcon" size={24} />
         </button>
       </div>
       <nav className="flex-1 px-4 py-4 space-y-2">
@@ -1014,7 +1032,7 @@ const ControlsPage = () => {
 };
 
 const UsersPage = () => {
-    const { api } = useDb();
+    const { api, functions } = useDb();
     const addToast = useToast();
     const [users, setUsers] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -1031,23 +1049,40 @@ const UsersPage = () => {
         return () => unsubscribe();
     }, [api]);
 
-    // NOTE: User CREATION is complex client-side as it requires creating auth user and firestore doc.
-    // This is a simplified version. A robust solution would use a Cloud Function.
     const handleSaveUser = async (formData) => {
-        addToast('A criação e edição de usuários não está implementada no front-end por razões de segurança.', 'info');
-        setIsModalOpen(false);
+        try {
+            if (editingUser) {
+                // NOTE: A edição do usuário (ex: mudança de função) exigiria outra Cloud Function.
+                // Por simplicidade, isso não foi implementado.
+                addToast('A edição de usuários ainda não foi implementada.', 'info');
+            } else {
+                const createUser = httpsCallable(functions, 'createUser');
+                await createUser(formData);
+                addToast('Usuário criado com sucesso!', 'success');
+            }
+            setIsModalOpen(false);
+            setEditingUser(null);
+        } catch (error) {
+            console.error("Erro ao salvar usuário:", error);
+            addToast(`Falha ao salvar usuário: ${error.message}`, 'error');
+        }
     };
 
-    // NOTE: User DELETION is not possible from the client-side SDK for other users.
-    // It requires the Firebase Admin SDK in a backend environment (e.g., Cloud Function).
     const handleDeleteUser = async (id) => {
-        addToast('A exclusão de usuários deve ser feita em um ambiente de back-end seguro.', 'error');
-        setConfirmDeleteId(null);
+        try {
+            const deleteUser = httpsCallable(functions, 'deleteUser');
+            await deleteUser({ uid: id });
+            addToast('Usuário excluído com sucesso!', 'success');
+            setConfirmDeleteId(null);
+        } catch (error) {
+            console.error("Erro ao excluir usuário:", error);
+            addToast(`Falha ao excluir usuário: ${error.message}`, 'error');
+        }
     };
 
     const UserForm = ({ user, onSave, onCancel }) => {
         const [formData, setFormData] = useState(user || {
-            name: '', email: '', role: 'Analyst'
+            name: '', email: '', role: 'Analyst', password: ''
         });
 
         const handleChange = (e) => {
@@ -1064,8 +1099,7 @@ const UsersPage = () => {
             <form onSubmit={handleSubmit} className="space-y-4">
                 <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="Nome Completo" required className="w-full p-2 bg-background border border-border-color rounded-md" />
                 <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="Email" required className="w-full p-2 bg-background border border-border-color rounded-md" />
-                {/* Simplified password field for creation, not ideal UX */}
-                {!user && <input type="password" name="password" placeholder="Senha" required className="w-full p-2 bg-background border border-border-color rounded-md" />}
+                {!user && <input type="password" name="password" value={formData.password} onChange={handleChange} placeholder="Senha" required className="w-full p-2 bg-background border border-border-color rounded-md" />}
                 <select name="role" value={formData.role} onChange={handleChange} required className="w-full p-2 bg-background border border-border-color rounded-md">
                     <option>Analyst</option><option>Admin</option>
                 </select>
