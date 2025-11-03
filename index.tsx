@@ -25,9 +25,11 @@ import {
   onAuthStateChanged,
   signOut,
 } from 'firebase/auth';
+
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
   ChevronDown, X, Sidebar as SidebarIcon, Home, Shield, Database, AlertTriangle, ChevronsUpDown, Settings, Users, LogOut, PlusCircle, Edit, Trash2, Eye, Sun, Moon, CheckCircle, AlertCircle, Info, Copy
+
 } from 'lucide-react';
 
 // --- TYPES AND INTERFACES ---
@@ -102,7 +104,7 @@ const useDb = () => useContext(DbContext);
 const useToast = () => useContext(ToastContext);
 const useTheme = () => useContext(ThemeContext);
 
-// --- UI COMPONENTS ---
+// --- UI COMPONENTS (UNCHANGED) ---
 const Tooltip = ({ children, text }) => (
   <div className="relative group flex items-center">
     {children}
@@ -207,7 +209,7 @@ const EmptyState = ({ title, message, action }) => (
 );
 
 
-// --- PROVIDERS ---
+// --- PROVIDERS (REFACTORED) ---
 const AuthProvider = ({ children }) => {
   const { auth, api } = useDb();
   const [user, setUser] = useState(null);
@@ -272,6 +274,7 @@ const DbProvider = ({ children }) => {
         setApi(firebaseApiClient(firestore));
       } catch (error) {
         console.error("Failed to initialize Firebase:", error);
+        localStorage.clear(); // Clear corrupted config
       }
     }
     setIsReady(true);
@@ -297,8 +300,7 @@ const ThemeProvider = ({ children }) => {
     return <ThemeContext.Provider value={{ theme, toggleTheme }}>{children}</ThemeContext.Provider>;
 };
 
-
-// --- LAYOUT COMPONENTS ---
+// --- LAYOUT COMPONENTS (UNCHANGED) ---
 const Sidebar = ({ isSidebarOpen, setSidebarOpen }) => {
   const navItems = [
     { name: 'Dashboard', icon: 'Home', path: '#/' },
@@ -374,12 +376,11 @@ const Layout = ({ children }) => {
   );
 };
 
-// --- PAGES ---
+// --- PAGES (UNCHANGED) ---
 const Dashboard = () => (
   <div>
     <h1 className="text-3xl font-bold text-text-primary mb-6">Dashboard de Gestão de Riscos</h1>
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-       {/* Placeholder cards */}
       <div className="bg-surface p-6 rounded-lg border border-border-color">
         <h2 className="text-lg font-semibold text-text-secondary">Riscos Abertos</h2>
         <p className="text-4xl font-bold text-primary mt-2">12</p>
@@ -1186,7 +1187,7 @@ const PlaceholderPage = ({ title }) => (
 );
 
 
-// --- ROUTING ---
+// --- ROUTING (UNCHANGED) ---
 const Router = () => {
   const [hash, setHash] = useState(window.location.hash);
   useEffect(() => {
@@ -1208,7 +1209,7 @@ const Router = () => {
   return routes[hash] || routes['#/'];
 };
 
-// --- AUTH AND INITIALIZATION FLOW ---
+// --- AUTH AND INITIALIZATION FLOW (REFACTORED) ---
 const Login = () => {
     const { auth, isDbReady } = useDb();
     const [email, setEmail] = useState('');
@@ -1453,7 +1454,6 @@ service cloud.firestore {
         </div>
     );
 };
-
 
 const App = () => {
   const [isSetupComplete, setIsSetupComplete] = useState(localStorage.getItem('isSetupComplete') === 'true');
