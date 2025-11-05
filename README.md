@@ -10,8 +10,10 @@ Esta versão da plataforma é construída como uma Aplicação de Página Única
 *   **Autenticação Segura com Firebase:** Utiliza o sistema de autenticação nativo do Google Firebase, garantindo que as senhas dos usuários sejam armazenadas de forma segura (com hash e salt).
 *   **Backend na Nuvem (Firestore):** Todos os dados são armazenados de forma segura e persistente no Firestore, um banco de dados NoSQL do Google.
 *   **Colaboração em Tempo Real:** As atualizações feitas por um usuário são refletidas instantaneamente para todos os outros usuários conectados.
-*   **Dashboard Centralizado:** Uma visão geral do estado da segurança, com métricas chave.
+*   **Dashboard Dinâmico:** Uma visão geral do estado da segurança, com métricas chave em tempo real, como riscos abertos, risco residual médio, e scores de cobertura para os frameworks NIST e CIS.
 *   **Gestão de Riscos (CRUD Completo):** Crie, visualize, edite e exclua riscos, vinculando-os a ativos, ameaças e controles.
+*   **Gestão de Usuários (CRUD Completo):** Crie, visualize, edite e exclua usuários, com permissões de administrador e analista.
+*   **Sugestão de Controles com IA:** Utilize o poder do Google Gemini para sugerir controles de segurança apropriados com base no ativo e na ameaça selecionados.
 *   **Configuração de IA na Interface:** Configure a chave de API do Google Gemini diretamente nas configurações da aplicação.
 *   **Interface Moderna e Responsiva:** Construída com TailwindCSS para uma experiência de usuário limpa em qualquer dispositivo.
 
@@ -80,3 +82,21 @@ Com o ambiente Firebase pronto, abra a aplicação EXA GRC no seu navegador. Voc
 2.  **Configure na Aplicação:**
     *   Dentro da EXA GRC, acesse a página **"Configurações"**.
     *   Cole sua chave de API no campo apropriado e clique em "Salvar". A chave é armazenada com segurança no seu navegador.
+
+### Desenvolvimento Local
+
+Se você deseja executar a aplicação localmente para desenvolvimento:
+
+1.  Clone o repositório: `git clone <url-do-repositorio>`
+2.  Instale as dependências: `npm install`
+3.  Crie um arquivo `.env` na raiz do projeto e adicione a configuração do seu projeto Firebase (a mesma que seria usada no wizard de instalação):
+
+    ```
+    VITE_FIREBASE_API_KEY=your_api_key
+    VITE_FIREBASE_AUTH_DOMAIN=your_auth_domain
+    VITE_FIREBASE_PROJECT_ID=your_project_id
+    VITE_FIREBASE_STORAGE_BUCKET=your_storage_bucket
+    VITE_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
+    VITE_FIREBASE_APP_ID=your_app_id
+    ```
+4.  Execute o servidor de desenvolvimento: `npm run dev`
