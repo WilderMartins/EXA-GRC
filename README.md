@@ -2,111 +2,101 @@
 
 Bem-vindo à EXA GRC, uma plataforma de Governança, Risco e Conformidade (GRC) de código aberto, projetada para ajudar organizações a gerenciar riscos de segurança da informação de forma eficiente e colaborativa. Inspirada em frameworks de mercado como NIST CSF e CIS Controls, a ferramenta oferece uma visão centralizada para identificar, avaliar, tratar e monitorar riscos.
 
-Esta versão final da plataforma é construída como uma Aplicação de Página Única (SPA) moderna, utilizando React e TailwindCSS, e é impulsionada por um backend robusto e escalável na nuvem com o **Google Firebase Firestore**, permitindo colaboração em tempo real entre múltiplos usuários.
+Esta versão da plataforma é construída como uma Aplicação de Página Única (SPA) moderna, utilizando React e TailwindCSS, e é impulsionada por um backend robusto e escalável na nuvem com o **Google Firebase**, permitindo colaboração em tempo real entre múltiplos usuários.
 
-## Funcionalidades Principais (Versão Final)
+## Funcionalidades Principais
 
-*   **Instalação Amigável:** Um wizard de instalação passo a passo que guia o administrador na configuração da conexão com o banco de dados Firebase na nuvem, sem precisar editar código.
-*   **Backend na Nuvem (Firebase):** Todos os dados são armazenados de forma segura e persistente no Firestore, um banco de dados NoSQL do Google.
-*   **Colaboração em Tempo Real:** As atualizações feitas por um usuário (ex: adicionar um novo risco) são refletidas instantaneamente nas telas de todos os outros usuários conectados, sem a necessidade de recarregar a página.
-*   **Dashboard Centralizado:** Uma visão geral do estado da segurança, com métricas chave como riscos abertos, nível de risco residual e eficácia dos controles.
-*   **Gestão de Riscos (CRUD Completo):** Crie, visualize, edite e exclua riscos, vinculando-os a ativos, ameaças e controles para uma análise completa.
-*   **Configuração de IA na Interface:** Configure a chave de API do Google Gemini diretamente nas configurações da aplicação, sem tocar no código-fonte.
-*   **Autenticação Segura:** Sistema de login para proteger o acesso à plataforma.
-*   **Interface Moderna e Responsiva:** Construída com TailwindCSS para uma experiência de usuário limpa e agradável em qualquer dispositivo.
+*   **Instalação Segura e Amigável:** Um wizard de instalação passo a passo que guia o administrador na configuração da conexão com o Firebase, criação do usuário administrador e aplicação de regras de segurança essenciais, sem precisar editar código.
+*   **Autenticação Segura com Firebase:** Utiliza o sistema de autenticação nativo do Google Firebase, garantindo que as senhas dos usuários sejam armazenadas de forma segura (com hash e salt).
+*   **Backend na Nuvem (Firestore):** Todos os dados são armazenados de forma segura e persistente no Firestore, um banco de dados NoSQL do Google.
+*   **Colaboração em Tempo Real:** As atualizações feitas por um usuário são refletidas instantaneamente para todos os outros usuários conectados.
+*   **Dashboard Dinâmico:** Uma visão geral do estado da segurança, com métricas chave em tempo real, como riscos abertos, risco residual médio, e scores de cobertura para os frameworks NIST e CIS.
+*   **Gestão de Riscos (CRUD Completo):** Crie, visualize, edite e exclua riscos, vinculando-os a ativos, ameaças e controles.
+*   **Gestão de Usuários (CRUD Completo):** Crie, visualize, edite e exclua usuários, com permissões de administrador e analista.
+*   **Sugestão de Controles com IA:** Utilize o poder do Google Gemini para sugerir controles de segurança apropriados com base no ativo e na ameaça selecionados.
+*   **Configuração de IA na Interface:** Configure a chave de API do Google Gemini diretamente nas configurações da aplicação.
+*   **Interface Moderna e Responsiva:** Construída com TailwindCSS para uma experiência de usuário limpa em qualquer dispositivo.
 
 ## Guia de Instalação e Deploy (Passo a Passo)
 
-Para colocar a EXA GRC em funcionamento para sua equipe, você precisará de uma conta no Google para configurar o banco de dados na nuvem (Firebase). O processo é gratuito e leva cerca de 5 minutos.
+Para colocar a EXA GRC em funcionamento, você precisará de uma conta no Google para configurar o backend na nuvem (Firebase). O processo é gratuito e leva cerca de 5 minutos.
 
-### Passo 1: Criar o Banco de Dados na Nuvem (Firebase)
+### Passo 1: Preparar o Ambiente na Nuvem (Firebase)
 
-1.  **Acesse o Firebase:** Abra seu navegador e vá para [firebase.google.com](https://firebase.google.com). Clique em "Começar" e faça login com sua conta do Google.
+1.  **Acesse o Firebase:** Vá para [firebase.google.com](https://firebase.google.com) e faça login com sua conta do Google.
 
 2.  **Crie um Novo Projeto:**
-    *   [IMAGEM: Tela do Firebase com o botão 'Criar projeto' destacado]
     *   Clique em **"Criar um projeto"**.
-    *   Dê um nome ao seu projeto, por exemplo, `exa-grc-minha-empresa`.
-    *   Aceite os termos e continue. Você pode desativar o Google Analytics para este projeto se desejar.
-    *   Aguarde a criação do projeto.
+    *   Dê um nome ao seu projeto (ex: `exa-grc-minha-empresa`).
+    *   Aceite os termos e continue. Você pode desativar o Google Analytics.
 
-3.  **Crie uma Aplicação Web:**
-    *   [IMAGEM: Tela principal do projeto com ícones de plataformas (iOS, Android, Web). O ícone da Web (`</>`) está destacado.]
-    *   Na tela principal do seu novo projeto, clique no ícone da Web (`</>`) para adicionar um aplicativo da Web.
-    *   Dê um apelido ao seu aplicativo, como "EXA GRC Web App".
-    *   Clique em **"Registrar aplicativo"**. Não precisa configurar o Firebase Hosting.
+3.  **Ative a Autenticação:**
+    *   No menu à esquerda, vá para **Build > Authentication**.
+    *   Clique em **"Começar"**.
+    *   Na aba **"Sign-in method"**, selecione **"E-mail/senha"** e ative-o.
 
-4.  **Copie o Objeto de Configuração:**
-    *   [IMAGEM: Tela mostrando o código de configuração do Firebase, começando com `const firebaseConfig = { ... };`]
-    *   O Firebase exibirá um objeto de configuração. É um bloco de texto que se parece com isto:
-        ```javascript
-        const firebaseConfig = {
-          apiKey: "AIza...",
-          authDomain: "seu-projeto.firebaseapp.com",
-          projectId: "seu-projeto",
-          storageBucket: "seu-projeto.appspot.com",
-          messagingSenderId: "12345...",
-          appId: "1:12345..."
-        };
-        ```
-    *   **Copie todo o objeto, incluindo as chaves `{` e `}`.** Este é o "cérebro" que conecta a aplicação ao seu banco de dados.
+4.  **Crie uma Aplicação Web:**
+    *   Volte para a tela principal do projeto (clicando na engrenagem ⚙️ e em "Configurações do projeto").
+    *   Na seção "Seus apps", clique no ícone da Web (`</>`).
+    *   Dê um apelido ao seu aplicativo (ex: "EXA GRC Web App") e clique em **"Registrar aplicativo"**.
 
-5.  **Ative o Banco de Dados Firestore:**
-    *   [IMAGEM: Menu lateral esquerdo do Firebase com 'Cloud Firestore' destacado.]
-    *   No menu à esquerda, vá para **"Build" > "Cloud Firestore"**.
+5.  **Copie o Objeto de Configuração:**
+    *   O Firebase exibirá um objeto de configuração `firebaseConfig`.
+    *   **Copie todo o objeto, incluindo as chaves `{` e `}`.** Você precisará dele no próximo passo.
+
+6.  **Ative o Banco de Dados Firestore:**
+    *   No menu à esquerda, vá para **Build > Cloud Firestore**.
     *   Clique em **"Criar banco de dados"**.
-    *   Selecione **"Iniciar no modo de teste"**. Isso permite que a aplicação escreva os dados iniciais.
-    *   **AVISO IMPORTANTE:** O modo de teste permite que qualquer pessoa leia e escreva no seu banco de dados. É ótimo para a instalação, mas **NÃO é seguro para produção**. Veja a seção de segurança abaixo.
-    *   Escolha um local para seus servidores (geralmente o mais próximo de você) e clique em "Ativar".
+    *   **IMPORTANTE:** Selecione **"Iniciar no modo de teste"**. Isso é temporário e necessário para que o wizard de instalação possa escrever os dados iniciais. O próprio wizard o guiará para proteger o banco de dados na etapa final.
+    *   Escolha um local para seus servidores e clique em "Ativar".
 
-### Passo 2: Configurar a Aplicação EXA GRC
+### Passo 2: Configurar a Aplicação com o Wizard de Instalação
 
-Agora que o banco de dados está pronto, vamos configurar a aplicação.
+Com o ambiente Firebase pronto, abra a aplicação EXA GRC no seu navegador. Você será recebido pelo wizard de instalação.
 
-1.  **Abra a Aplicação:** Carregue a EXA GRC no seu navegador. Como é a primeira vez, você verá o **Wizard de Instalação**.
+1.  **Etapa 1: Conectar ao Firebase**
+    *   Na primeira tela, **cole o objeto `firebaseConfig`** que você copiou anteriormente.
+    *   Clique em **"Conectar e Continuar"**. O sistema testará a conexão.
 
-2.  **Conecte ao Firebase:**
-    *   [IMAGEM: Tela do wizard da EXA GRC, na etapa 1, mostrando uma grande caixa de texto.]
-    *   Na primeira etapa do wizard, **cole o objeto `firebaseConfig`** que você copiou anteriormente na caixa de texto.
-    *   Clique em **"Conectar e Continuar"**. O sistema irá testar a conexão.
+2.  **Etapa 2: Criar o Usuário Administrador**
+    *   Preencha as informações para criar a primeira conta de usuário, que será o administrador da plataforma.
+    *   Use um email e uma senha forte (mínimo de 6 caracteres).
+    *   Clique em **"Criar Administrador"**. O sistema criará o usuário no Firebase Authentication e populará o banco de dados com dados iniciais.
 
-3.  **Crie o Usuário Administrador:**
-    *   Na segunda etapa, preencha as informações para criar a primeira conta de usuário, que será o administrador da plataforma.
-    *   Use um email e uma senha fortes.
-    *   Clique em **"Criar Administrador e Finalizar"**. O sistema irá criar o usuário e popular o banco de dados com dados iniciais (exemplos de ativos, ameaças, etc.).
+3.  **Etapa 3: Proteger o Banco de Dados**
+    *   Esta é a etapa mais crítica para a segurança dos seus dados.
+    *   O wizard exibirá um conjunto de **regras de segurança** que garantem que apenas usuários autenticados possam acessar os dados.
+    *   Siga as instruções na tela:
+        *   Clique no link para ir diretamente à página de regras do seu Firestore.
+        *   Copie as regras fornecidas pelo wizard.
+        *   Cole-as no editor de regras do Firebase, substituindo o conteúdo existente.
+        *   Clique em **"Publicar"** no Firebase.
+    *   Após publicar as regras, volte ao wizard e clique em **"Já atualizei as regras, finalizar instalação"**.
 
 4.  **Instalação Concluída!**
     *   Você será redirecionado para a tela de login. Use o email e a senha do administrador que você acabou de criar para acessar a plataforma.
 
 ### Passo 3: Configurar a Inteligência Artificial (Opcional)
 
-Para usar as funcionalidades de IA (que serão expandidas no futuro), você precisa de uma chave de API do Google Gemini.
-
-1.  **Obtenha uma Chave de API:** Vá para [makersuite.google.com/app/apikey](https://makersuite.google.com/app/apikey) para gerar sua chave gratuita.
+1.  **Obtenha uma Chave de API:** Vá para [makersuite.google.com/app/apikey](https://makersuite.google.com/app/apikey) para gerar sua chave gratuita do Google Gemini.
 2.  **Configure na Aplicação:**
-    *   Dentro da EXA GRC, vá para a página **"Configurações"** no menu lateral.
-    *   Cole sua chave de API no campo apropriado e clique em "Salvar". A chave será salva de forma segura no seu navegador.
+    *   Dentro da EXA GRC, acesse a página **"Configurações"**.
+    *   Cole sua chave de API no campo apropriado e clique em "Salvar". A chave é armazenada com segurança no seu navegador.
 
----
+### Desenvolvimento Local
 
-### ⚠️ AVISO DE SEGURANÇA IMPORTANTE (PRODUÇÃO)
+Se você deseja executar a aplicação localmente para desenvolvimento:
 
-As regras de segurança que você configurou no "modo de teste" são inseguras para um ambiente de produção com dados reais. Elas permitem que qualquer pessoa com o ID do seu projeto leia e apague todos os seus dados.
+1.  Clone o repositório: `git clone <url-do-repositorio>`
+2.  Instale as dependências: `npm install`
+3.  Crie um arquivo `.env` na raiz do projeto e adicione a configuração do seu projeto Firebase (a mesma que seria usada no wizard de instalação):
 
-**Antes de usar a EXA GRC com dados sensíveis, é CRUCIAL que você atualize as regras de segurança do Firestore para permitir acesso apenas a usuários autenticados.**
-
-Este é um tópico complexo, mas um ponto de partida para regras mais seguras seria algo como:
-
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Permite leitura e escrita apenas se o usuário estiver logado.
-    match /{document=**} {
-      allow read, write: if request.auth != null;
-    }
-  }
-}
-```
-
-**Recomendamos fortemente que um desenvolvedor ou profissional de segurança revise e personalize essas regras para atender às necessidades da sua organização antes do deploy final.**
+    ```
+    VITE_FIREBASE_API_KEY=your_api_key
+    VITE_FIREBASE_AUTH_DOMAIN=your_auth_domain
+    VITE_FIREBASE_PROJECT_ID=your_project_id
+    VITE_FIREBASE_STORAGE_BUCKET=your_storage_bucket
+    VITE_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
+    VITE_FIREBASE_APP_ID=your_app_id
+    ```
+4.  Execute o servidor de desenvolvimento: `npm run dev`
