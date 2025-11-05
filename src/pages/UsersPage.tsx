@@ -29,9 +29,9 @@ export const UsersPage = () => {
     const handleSaveUser = async (formData) => {
         try {
             if (editingUser) {
-                // NOTE: A edição do usuário (ex: mudança de função) exigiria outra Cloud Function.
-                // Por simplicidade, isso não foi implementado.
-                addToast('A edição de usuários ainda não foi implementada.', 'info');
+                const updateUser = httpsCallable(functions, 'updateUser');
+                await updateUser({ uid: editingUser.id, ...formData });
+                addToast('Usuário atualizado com sucesso!', 'success');
             } else {
                 const createUser = httpsCallable(functions, 'createUser');
                 await createUser(formData);
@@ -75,7 +75,7 @@ export const UsersPage = () => {
         return (
             <form onSubmit={handleSubmit} className="space-y-4">
                 <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="Nome Completo" required className="w-full p-2 bg-background border border-border-color rounded-md" />
-                <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="Email" required className="w-full p-2 bg-background border border-border-color rounded-md" />
+                <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="Email" required disabled={!!user} className="w-full p-2 bg-background border border-border-color rounded-md" />
                 {!user && <input type="password" name="password" value={formData.password} onChange={handleChange} placeholder="Senha" required className="w-full p-2 bg-background border border-border-color rounded-md" />}
                 <select name="role" value={formData.role} onChange={handleChange} required className="w-full p-2 bg-background border border-border-color rounded-md">
                     <option>Analyst</option><option>Admin</option>

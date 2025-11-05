@@ -95,3 +95,51 @@ exports.deleteUser = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("internal", "Erro ao excluir usuário.");
   }
 });
+
+exports.updateUser = functions.https.onCall(async (data, context) => {
+  // Check if the user is an administrator.
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "Você deve estar logado para atualizar um usuário."
+    );
+  }
+
+  const callerDoc = await admin
+    .firestore()
+    .collection("users")
+    .doc(context.auth.uid)
+    .get();
+
+  if (!callerDoc.exists || callerDoc.data().role !== "admin") {
+    throw new functions.https.HttpsError(
+      "permission-denied",
+      "Você não tem permissão para atualizar um usuário."
+    );
+  }
+
+  const { uid, name, role } = data;
+
+  if (!uid || !name || !role) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "Faltam dados do usuário obrigatórios."
+    );
+  }
+
+  try {
+    await admin.auth().updateUser(uid, {
+      displayName: name,
+    });
+
+    await admin.firestore().collection("users").doc(uid).update({
+      name: name,
+      role: role,
+    });
+
+    return { result: `Usuário ${uid} atualizado com sucesso.` };
+  } catch (error) {
+    console.error("Erro ao atualizar usuário:", error);
+    throw new functions.https.HttpsError("internal", "Erro ao atualizar usuário.");
+  }
+});
