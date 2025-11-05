@@ -18,6 +18,7 @@ export const RisksPage = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingRisk, setEditingRisk] = useState(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+    const [isSuggesting, setIsSuggesting] = useState(false);
 
     useEffect(() => {
         if (!api) return;
@@ -69,6 +70,75 @@ export const RisksPage = () => {
             title: '', assetId: '', threatId: '', controlId: '', status: 'Open', likelihood: 3, impact: 3, owner: ''
         });
 
+        const handleSuggestControl = async () => {
+            const apiKey = localStorage.getItem('geminiApiKey');
+            if (!apiKey) {
+                addToast('A IA não está configurada. Adicione sua chave de API nas Configurações.', 'error');
+                return;
+            }
+
+            const asset = assets.find(a => a.id === formData.assetId);
+            const threat = threats.find(t => t.id === formData.threatId);
+
+            if (!asset || !threat) {
+                addToast('Selecione um Ativo e uma Ameaça para obter uma sugestão.', 'info');
+                return;
+            }
+
+            setIsSuggesting(true);
+            try {
+                const { GoogleGenerativeAI } = await new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = 'https://aistudiocdn.com/@google/genai@^1.27.0';
+                    script.onload = () => resolve(window);
+                    script.onerror = reject;
+                    document.head.appendChild(script);
+                });
+
+                const genAI = new GoogleGenerativeAI(apiKey);
+                const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+                const prompt = `Para um ativo do tipo "${asset.type}" com nome "${asset.name}", qual seria um bom controle de segurança para mitigar a ameaça de "${threat.name}"? Forneça um nome curto para o controle (máximo 5 palavras) e uma breve descrição (1-2 frases). Formate a resposta como: NOME: [nome do controle] DESCRIÇÃO: [descrição do controle]`;
+                const result = await model.generateContent(prompt);
+                const response = await result.response;
+                const text = response.text();
+
+                const nameMatch = text.match(/NOME: (.*)/);
+                const descMatch = text.match(/DESCRIÇÃO: (.*)/);
+
+                if (nameMatch && descMatch) {
+                    const newControlName = nameMatch[1].trim();
+                    const newControlDesc = descMatch[1].trim();
+
+                    // Check if a similar control already exists
+                    const existingControl = controls.find(c => c.name.toLowerCase() === newControlName.toLowerCase());
+
+                    if (existingControl) {
+                         setFormData(prev => ({ ...prev, controlId: existingControl.id }));
+                         addToast('Sugestão: Controle existente selecionado.', 'success');
+                    } else {
+                        // Create a new control
+                        const newControl = await api.create('controls', {
+                            name: newControlName,
+                            description: newControlDesc,
+                            family: 'Sugerido por IA',
+                            framework: 'N/A'
+                        });
+                        setFormData(prev => ({ ...prev, controlId: newControl.id }));
+                        addToast('Novo controle sugerido pela IA foi criado e selecionado!', 'success');
+                    }
+                } else {
+                     addToast('A IA não retornou uma sugestão no formato esperado.', 'error');
+                }
+
+            } catch (error) {
+                console.error("Error suggesting control:", error);
+                addToast('Falha ao obter sugestão da IA.', 'error');
+            } finally {
+                setIsSuggesting(false);
+            }
+        };
+
+
         const handleChange = (e) => {
             const { name, value } = e.target;
             setFormData(prev => ({ ...prev, [name]: name === 'likelihood' || name === 'impact' ? parseInt(value) : value }));
@@ -87,7 +157,12 @@ export const RisksPage = () => {
                     <select name="assetId" value={formData.assetId} onChange={handleChange} required className="w-full p-2 bg-background border border-border-color rounded-md"><option value="">Selecione o Ativo</option>{assets.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
                     <select name="threatId" value={formData.threatId} onChange={handleChange} required className="w-full p-2 bg-background border border-border-color rounded-md"><option value="">Selecione a Ameaça</option>{threats.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
                 </div>
-                 <select name="controlId" value={formData.controlId} onChange={handleChange} required className="w-full p-2 bg-background border border-border-color rounded-md"><option value="">Selecione o Controle</option>{controls.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+                <div className="flex items-center gap-2">
+                    <select name="controlId" value={formData.controlId} onChange={handleChange} required className="w-full p-2 bg-background border border-border-color rounded-md"><option value="">Selecione o Controle</option>{controls.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+                    <button type="button" onClick={handleSuggestControl} disabled={isSuggesting} className="p-2 bg-secondary text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center justify-center">
+                        {isSuggesting ? <Spinner /> : <Icon name="Sparkles" size={20} />}
+                    </button>
+                </div>
                  <select name="status" value={formData.status} onChange={handleChange} required className="w-full p-2 bg-background border border-border-color rounded-md">
                     <option>Open</option><option>In Progress</option><option>Closed</option><option>Accepted</option>
                 </select>
